@@ -57,8 +57,8 @@ current working directory). `SKILL_DIR` below is the directory containing this f
    `course.json` and run it again.
 
 4. **Summarize** for the user: the lesson list, and that they can take the course
-   interactively with `npx curriculo learn` or commit `LEARN.md` (badge:
-   `npx curriculo badge`).
+   interactively with `npx github:Darshit42/Curriculo learn` or commit `LEARN.md` (badge:
+   `npx github:Darshit42/Curriculo badge`).
 
 ## Alternative: BharatCode backend
 

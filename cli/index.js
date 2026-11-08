@@ -51,9 +51,9 @@ ${bold('Environment')}
   BHARATCODE_MODEL     Model id
 
 ${bold('Examples')}
-  npx curriculo gen expressjs/express --learn
-  npx curriculo gen . --offline
-  npx curriculo learn
+  npx github:Darshit42/Curriculo gen expressjs/express --learn
+  npx github:Darshit42/Curriculo gen . --offline
+  npx github:Darshit42/Curriculo learn
 `;
 
 function fail(msg, code = 1) {
@@ -118,15 +118,15 @@ async function cmdGen(args, opts) {
   out.push(`  ${dim('wrote')}   ${result.learnPath}`);
   out.push(`          ${result.manifestPath}`);
   out.push('');
-  out.push(`  Next: ${cyan(result.remote ? `cd "${result.root}" && npx curriculo learn` : 'npx curriculo learn')}`);
-  out.push(`  Maintainers: commit LEARN.md and add the badge → ${cyan('npx curriculo badge')}`);
+  out.push(`  Next: ${cyan(result.remote ? `cd "${result.root}" && npx github:Darshit42/Curriculo learn` : 'npx github:Darshit42/Curriculo learn')}`);
+  out.push(`  Maintainers: commit LEARN.md and add the badge → ${cyan('npx github:Darshit42/Curriculo badge')}`);
   process.stdout.write(out.join('\n') + '\n');
   if (opts.learn) await cmdLearn([result.root]);
 }
 
 async function cmdLearn(args) {
   const root = findCourseRoot(args[0]);
-  if (!root) fail(`No course found. Generate one first: ${cyan('npx curriculo gen .')}`);
+  if (!root) fail(`No course found. Generate one first: ${cyan('npx github:Darshit42/Curriculo gen .')}`);
   let course;
   try {
     course = loadCourse(root);

@@ -7,7 +7,7 @@
 ![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)
 
 ```bash
-npx curriculo gen expressjs/express --learn
+npx github:Darshit42/Curriculo gen expressjs/express --learn
 ```
 
 ---
@@ -20,6 +20,8 @@ Curriculo produces that **path**: an ordered walk through the parts that matter,
 
 ## Quick start
 
+Runs straight from GitHub with no install step (Node.js 18+). To get a short `curriculo` command instead, run `npm i -g github:Darshit42/Curriculo`.
+
 ```bash
 # 1. Configure the BharatCode API (read from the environment only, never written to disk)
 export BHARATCODE_API_KEY=...
@@ -27,14 +29,14 @@ export BHARATCODE_BASE_URL=https://<bharatcode-host>/v1
 export BHARATCODE_MODEL=<model-id>
 
 # 2. Generate a course for a public repo (shallow-cloned to ~/.curriculo/repos) or a local path
-npx curriculo gen pallets/click
-npx curriculo gen .
+npx github:Darshit42/Curriculo gen pallets/click
+npx github:Darshit42/Curriculo gen .
 
 # 3. Take it
-npx curriculo learn
+npx github:Darshit42/Curriculo learn
 ```
 
-No API key? `npx curriculo gen . --offline` builds a heuristic course with zero model calls. Its lessons come from file structure, doc comments and declarations, and its quizzes are checkable facts such as "which file defines `X`?"
+No API key? `npx github:Darshit42/Curriculo gen . --offline` builds a heuristic course with zero model calls. Its lessons come from file structure, doc comments and declarations, and its quizzes are checkable facts such as "which file defines `X`?"
 
 ## What you get
 
@@ -102,9 +104,9 @@ The same engine ships as a Claude skill in [`skill/`](skill/SKILL.md). Copy that
 ## For maintainers
 
 ```bash
-npx curriculo gen .        # review LEARN.md
+npx github:Darshit42/Curriculo gen .        # review LEARN.md
 git add LEARN.md .curriculo/course.json
-npx curriculo badge        # paste into your README
+npx github:Darshit42/Curriculo badge        # paste into your README
 ```
 
 Regenerate after a refactor. Unchanged files hit the cache.
