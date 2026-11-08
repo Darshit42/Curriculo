@@ -5,8 +5,15 @@ import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import {
   DEFAULTS,
+  ModelClient,
+  STATE_DIR,
+  askAboutCode,
   badgeMarkdown,
+  buildCodeMap,
   generateCourse,
+  mermaidModules,
+  resolveProvider,
+  textModuleMap,
   ingest,
   loadCourse,
   manifestPath,
@@ -17,6 +24,7 @@ import {
 import { formatDuration, readJSON } from '../engine/util.js';
 import { runTUI, printCourse } from './tui.js';
 import { cmdLogin, cmdLogout, cmdProviders, cmdUse } from './providers-cmd.js';
+import { runExplorer } from './explore.js';
 
 const pkg = readJSON(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), {});
 const color = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -35,6 +43,12 @@ ${bold('Usage')}
   curriculo render [path]            Re-render LEARN.md from the course manifest
   curriculo rank <repo-url-or-path>  Show which files Curriculo would teach, and why
   curriculo badge                    Print a README badge linking to LEARN.md
+
+${bold('Explore the code')}
+  curriculo explore [path]           Visual explorer: folder tree, import graph, module map,
+                                     open files/folders, and ask questions about any of them
+  curriculo map [path]               Print the module map (--mermaid for a diagram, --json for data)
+  curriculo ask "<question>" [path]  Ask about the repo (--about <file-or-folder> to focus)
 
 ${bold('Model providers')}
   curriculo login <provider> [key]   Save an API key locally (~/.curriculo/config.json)
@@ -183,6 +197,81 @@ function cmdRank(args, opts) {
   }
 }
 
+/** Ingest a repo and build its code map (plus the course, if one exists). */
+function loadMap(target, opts) {
+  let src;
+  try {
+    src = resolveSource(target || '.', { dest: opts.out, log: (m) => process.stderr.write(dim(`› ${m}\n`)) });
+  } catch (err) {
+    fail(err.message);
+  }
+  const ing = ingest(src.root);
+  if (!ing.files.length) fail(`No readable source files found in ${src.root}`);
+  const map = buildCodeMap(ing);
+  let course = null;
+  try {
+    course = loadCourse(src.root);
+  } catch {
+    /* no course yet, or unreadable: the explorer still works */
+  }
+  return { src, ing, map, course };
+}
+
+function clientFor(root, opts) {
+  const provider = resolveProvider({ provider: opts.provider, model: opts.model });
+  return new ModelClient({ provider, cacheDir: path.join(root, STATE_DIR, 'cache'), useCache: !opts['no-cache'] });
+}
+
+async function cmdExplore(args, opts) {
+  const { src, ing, map, course } = loadMap(args[0], opts);
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    process.stdout.write(textModuleMap(map) + '\n');
+    return;
+  }
+  let client;
+  await runExplorer({
+    map,
+    ing,
+    root: src.root,
+    repoId: src.repoId,
+    course,
+    getClient: () => (client ??= clientFor(src.root, opts)),
+  });
+}
+
+function cmdMap(args, opts) {
+  const { src, map } = loadMap(args[0], opts);
+  if (opts.json) {
+    const files = [...map.files.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, int(opts.top, 'top') ?? 60)
+      .map(({ path: p, lines, score, entry, reasons, module, imports, importedBy }) => ({ path: p, lines, score, entry, reasons, module, imports, importedBy }));
+    process.stdout.write(JSON.stringify({ repo: src.repoId, modules: map.modules, moduleEdges: map.moduleEdges, files }, null, 2) + '\n');
+  } else if (opts.mermaid) {
+    process.stdout.write(mermaidModules(map) + '\n');
+  } else {
+    process.stdout.write(`${bold(src.repoId)} ${dim(`${map.files.size} files · ${map.edgeCount} import links`)}\n\n${textModuleMap(map)}\n`);
+  }
+}
+
+async function cmdAsk(args, opts) {
+  const question = args[0];
+  if (!question) fail('Usage: curriculo ask "<question>" [repo-path] [--about <file-or-folder>]');
+  const { src, ing, map, course } = loadMap(args[1], opts);
+  const target = (opts.about || '').replace(/\\/g, '/').replace(/^\.?\//, '').replace(/\/+$/, '');
+  if (target && !map.files.has(target) && ![...map.files.keys()].some((p) => p.startsWith(target + '/'))) {
+    fail(`"${target}" is not a file or folder Curriculo indexed in ${src.repoId}.`);
+  }
+  try {
+    const client = clientFor(src.root, opts);
+    process.stderr.write(dim(`› Asking ${client.label} about ${target || 'the whole repo'}…\n`));
+    const answer = await askAboutCode({ client, ing, map, target, question, repo: src.repoId, summary: course?.summary });
+    process.stdout.write(answer + '\n');
+  } catch (err) {
+    fail(err.message);
+  }
+}
+
 async function main() {
   let parsed;
   try {
@@ -201,6 +290,9 @@ async function main() {
         model: { type: 'string' },
         default: { type: 'boolean' },
         'no-verify': { type: 'boolean' },
+        json: { type: 'boolean' },
+        mermaid: { type: 'boolean' },
+        about: { type: 'string' },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
       },
@@ -222,6 +314,12 @@ async function main() {
       return cmdRender(args);
     case 'rank':
       return cmdRank(args, opts);
+    case 'explore':
+      return cmdExplore(args, opts);
+    case 'map':
+      return cmdMap(args, opts);
+    case 'ask':
+      return cmdAsk(args, opts);
     case 'login':
       return cmdLogin(args, opts, fail);
     case 'logout':

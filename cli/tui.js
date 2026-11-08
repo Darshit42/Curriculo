@@ -2,74 +2,20 @@
  * Dependency-free terminal UI: lesson list -> lesson view -> quiz, with
  * progress persisted to .curriculo/progress.json so a course can be resumed.
  */
-import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import readline from 'node:readline';
 import { progressPath } from '../engine/manifest.js';
 import { readJSON, writeJSON } from '../engine/util.js';
+import { A, openPath, stripAnsi, styleLine, wrap } from './term.js';
 
-const A = {
-  bold: (s) => `\x1b[1m${s}\x1b[22m`,
-  dim: (s) => `\x1b[2m${s}\x1b[22m`,
-  inv: (s) => `\x1b[7m${s}\x1b[27m`,
-  cyan: (s) => `\x1b[36m${s}\x1b[39m`,
-  green: (s) => `\x1b[32m${s}\x1b[39m`,
-  red: (s) => `\x1b[31m${s}\x1b[39m`,
-  yellow: (s) => `\x1b[33m${s}\x1b[39m`,
-  blue: (s) => `\x1b[34m${s}\x1b[39m`,
-};
+export { wrap };
+
 const LETTERS = 'abcde';
-const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
-
-/** Word-wrap plain text to `width`, preserving blank lines and leading indent. */
-export function wrap(text, width) {
-  const out = [];
-  for (const raw of text.split('\n')) {
-    if (!raw.trim()) {
-      out.push('');
-      continue;
-    }
-    const indent = raw.match(/^\s*(?:[-*]\s+|\d+\.\s+)?/)[0].replace(/[^\s]/g, ' ');
-    let line = '';
-    for (const word of raw.split(/(\s+)/)) {
-      if (!word) continue;
-      if ((line + word).length > width && line.trim()) {
-        out.push(line.trimEnd());
-        line = indent + word.trimStart();
-      } else line += word;
-    }
-    out.push(line.trimEnd());
-  }
-  return out;
-}
-
-/** Light Markdown styling for one already-wrapped line. */
-function styleLine(line, state) {
-  if (/^\s*```/.test(line)) {
-    state.code = !state.code;
-    return A.dim(line);
-  }
-  if (state.code) return A.cyan(line);
-  if (/^#{1,6}\s/.test(line)) return A.bold(line.replace(/^#{1,6}\s/, ''));
-  return line
-    .replace(/\*\*([^*]+)\*\*/g, (_, t) => A.bold(t))
-    .replace(/`([^`]+)`/g, (_, t) => A.cyan(t));
-}
 
 function loadProgress(root, course) {
   const p = readJSON(progressPath(root), null);
   if (!p || typeof p !== 'object' || !p.lessons) return { course: course.generatedAt, lessons: {} };
   return p;
-}
-
-function editorCommand() {
-  const ed = process.env.VISUAL || process.env.EDITOR;
-  if (ed) return { cmd: ed, terminal: !/\b(code|cursor|subl|zed|idea|webstorm|atom|gedit|kate)\b/.test(ed) };
-  const which = process.platform === 'win32' ? 'where' : 'which';
-  for (const c of ['code', 'cursor']) {
-    if (spawnSync(which, [c], { stdio: 'ignore', shell: process.platform === 'win32' }).status === 0) return { cmd: c, gui: true };
-  }
-  return null;
 }
 
 export function runTUI({ course, root }) {
@@ -89,8 +35,6 @@ export function runTUI({ course, root }) {
       picked: null,
       flash: firstOpen > 0 ? `Welcome back — resuming at lesson ${firstOpen + 1}.` : '',
     };
-    let editor;
-
     const W = () => Math.max(40, Math.min(out.columns || 80, 110));
     const H = () => Math.max(12, out.rows || 24);
 
@@ -204,24 +148,7 @@ export function runTUI({ course, root }) {
     }
 
     function openFile(rel) {
-      const abs = path.join(root, rel);
-      editor ??= editorCommand() || false;
-      if (!editor) {
-        const opener = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', abs]] : process.platform === 'darwin' ? ['open', [abs]] : ['xdg-open', [abs]];
-        spawn(opener[0], opener[1], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
-        st.flash = `Opened ${rel} with the system default app (set $EDITOR to choose).`;
-        return;
-      }
-      if (editor.terminal) {
-        leave();
-        spawnSync(`${editor.cmd} "${abs}"`, { stdio: 'inherit', shell: true });
-        enter();
-        st.flash = `Back from ${rel}.`;
-      } else {
-        const args = editor.gui ? ['-g', `"${abs}"`] : [`"${abs}"`];
-        spawn(`${editor.cmd} ${args.join(' ')}`, { detached: true, stdio: 'ignore', shell: true }).on('error', () => {}).unref();
-        st.flash = `Opened ${rel} in ${editor.cmd.split(/[\\/ ]/).filter(Boolean)[0]}.`;
-      }
+      st.flash = openPath(path.join(root, rel), rel, { leave, enter });
     }
 
     function finishLesson() {
