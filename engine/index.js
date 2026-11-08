@@ -1,11 +1,12 @@
 /**
  * Curriculo engine: a UI-less library shared by the CLI and the Claude skill.
- * ingest -> rank -> synthesize (BharatCode or offline heuristics) -> manifest -> LEARN.md
+ * ingest -> rank -> synthesize (BharatCode or another provider, or offline heuristics) -> manifest -> LEARN.md
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { ingest, resolveSource } from './ingest.js';
-import { BharatCodeClient, configFromEnv, missingConfig } from './llm.js';
+import { ModelClient } from './llm.js';
+import { resolveProvider } from './providers.js';
 import { buildCourse, manifestPath, saveCourse, STATE_DIR, validateCourse } from './manifest.js';
 import { offlineCourse } from './offline.js';
 import { rankFiles, selectTeachingSet } from './rank.js';
@@ -15,7 +16,8 @@ import { synthesizeWithModel } from './synth.js';
 export { ingest, resolveSource, isRemote, isSecretPath, treeOverview } from './ingest.js';
 export { rankFiles, selectTeachingSet } from './rank.js';
 export { extractSymbols, leadingDoc, signalSlice } from './slice.js';
-export { BharatCodeClient, BudgetError, configFromEnv, missingConfig } from './llm.js';
+export { BharatCodeClient, BudgetError, ModelClient, RefusalError } from './llm.js';
+export { PROVIDERS, configPath, loadConfig, maskKey, providerNames, resolveProvider, saveConfig } from './providers.js';
 export * from './manifest.js';
 export { renderLearnMd, badgeMarkdown } from './render.js';
 export { offlineCourse } from './offline.js';
@@ -45,24 +47,25 @@ export async function generateCourse({
   budget = DEFAULTS.budget,
   concurrency = DEFAULTS.concurrency,
   useCache = true,
+  provider,
+  model: modelOverride,
+  config,
   env = process.env,
   fetchImpl,
   log = () => {},
 } = {}) {
   const t0 = Date.now();
 
+  // Resolve the provider before any cloning, so a missing key fails fast.
   let client;
   let model = 'offline-heuristic';
+  let providerName = 'offline';
+  let resolved;
   if (!offline) {
-    const cfg = configFromEnv(env);
-    const missing = missingConfig(cfg);
-    if (missing.length) {
-      const e = new Error(`Missing ${missing.join(', ')}. Set them in your environment, or pass --offline for a heuristic course with no model calls.`);
-      e.code = 'NO_CONFIG';
-      throw e;
-    }
-    model = cfg.model;
-    client = { cfg };
+    resolved = resolveProvider({ provider, model: modelOverride, env, ...(config ? { config } : {}) });
+    model = resolved.model;
+    providerName = resolved.provider;
+    log(`Using ${resolved.label}: ${resolved.model}`);
   }
 
   const src = resolveSource(source, { dest, log });
@@ -77,8 +80,8 @@ export async function generateCourse({
   if (offline) {
     result = offlineCourse({ ing, ranked, teaching, maxLessons });
   } else {
-    client = new BharatCodeClient({
-      ...client.cfg,
+    client = new ModelClient({
+      provider: resolved,
       cacheDir: path.join(src.root, STATE_DIR, 'cache'),
       budget,
       useCache,
@@ -96,7 +99,7 @@ export async function generateCourse({
       : { prompt: 0, completion: 0, calls: 0, cached: 0 },
     degradedLessons: result.lessons.filter((l) => l.degraded).length,
   };
-  const course = buildCourse({ repo: src.repoId, model, summary: result.summary, lessons: result.lessons, stats });
+  const course = buildCourse({ repo: src.repoId, provider: providerName, model, summary: result.summary, lessons: result.lessons, stats });
   const errs = validateCourse(course, { knownFiles: new Set(ing.files.map((f) => f.path)) });
   if (errs.length) throw new Error(`Generated course failed validation:\n  - ${errs.join('\n  - ')}`);
 

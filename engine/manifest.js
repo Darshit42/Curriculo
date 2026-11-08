@@ -79,11 +79,12 @@ export function lessonId(order, title) {
 }
 
 /** Assemble a manifest in the canonical field order. */
-export function buildCourse({ repo, model, summary, lessons, stats }) {
+export function buildCourse({ repo, provider, model, summary, lessons, stats }) {
   return {
     version: MANIFEST_VERSION,
     repo,
     generatedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    ...(provider ? { provider } : {}),
     model,
     summary,
     lessons: lessons.map((l, i) => ({

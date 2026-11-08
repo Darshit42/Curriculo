@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { PROVIDERS, resolveProvider } from './providers.js';
 import { estTokens, readJSON, sha, writeJSON } from './util.js';
 
 export class BudgetError extends Error {
@@ -9,49 +10,96 @@ export class BudgetError extends Error {
   }
 }
 
-/**
- * Read BharatCode settings from the environment. The API key is only ever
- * held in memory; it is never written to the manifest, cache or LEARN.md.
- */
-export const DEFAULT_BASE_URL = 'https://bharatcode.ai/api/model/v1';
-export const DEFAULT_MODEL = 'qwen-3.8-27b';
-
-export function configFromEnv(env = process.env) {
-  return {
-    apiKey: env.BHARATCODE_API_KEY || '',
-    baseUrl: (env.BHARATCODE_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, ''),
-    model: env.BHARATCODE_MODEL || DEFAULT_MODEL,
-    // Reasoning tokens count against max_tokens; "low" keeps lessons grounded but cheap.
-    reasoningEffort: env.BHARATCODE_REASONING_EFFORT ?? 'low',
-  };
-}
-
-export function missingConfig(cfg) {
-  const missing = [];
-  if (!cfg.apiKey) missing.push('BHARATCODE_API_KEY');
-  if (!cfg.baseUrl) missing.push('BHARATCODE_BASE_URL');
-  if (!cfg.model) missing.push('BHARATCODE_MODEL');
-  return missing;
+export class RefusalError extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = 'RefusalError';
+  }
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** Build the HTTP request for one call in the provider's wire format. */
+export function buildRequest(p, { system, user, maxTokens, temperature }) {
+  if (p.format === 'anthropic') {
+    return {
+      url: `${p.baseUrl}/messages`,
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': p.apiKey,
+        'anthropic-version': '2026-10-21',
+      },
+      body: {
+        model: p.model,
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: 'user', content: user }],
+        ...(p.effort ? { output_config: { effort: p.effort } } : {}),
+      },
+    };
+  }
+  const body = {
+    model: p.model,
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    [p.maxTokensField || 'max_tokens']: maxTokens,
+    ...(p.noTemperature ? {} : { temperature }),
+    ...(p.effort && p.effortParam === 'reasoning_effort' ? { reasoning_effort: p.effort } : {}),
+  };
+  return {
+    url: `${p.baseUrl}/chat/completions`,
+    headers: {
+      'content-type': 'application/json',
+      ...(p.apiKey ? { authorization: `Bearer ${p.apiKey}` } : {}),
+      ...(p.provider === 'openrouter' ? { 'x-title': 'Curriculo' } : {}),
+    },
+    body,
+  };
+}
+
+/** Normalize a response: { text, truncated, refused, usage: { prompt, completion } }. */
+export function parseResponse(p, data) {
+  if (p.format === 'anthropic') {
+    const blocks = Array.isArray(data?.content) ? data.content : [];
+    return {
+      text: blocks.filter((b) => b.type === 'text').map((b) => b.text).join(''),
+      truncated: data?.stop_reason === 'max_tokens',
+      refused: data?.stop_reason === 'refusal',
+      usage: { prompt: data?.usage?.input_tokens, completion: data?.usage?.output_tokens },
+    };
+  }
+  const choice = data?.choices?.[0];
+  let text = choice?.message?.content ?? choice?.text ?? null;
+  if (Array.isArray(text)) text = text.map((part) => part.text || '').join('');
+  return {
+    text,
+    truncated: choice?.finish_reason === 'length',
+    refused: choice?.finish_reason === 'content_filter',
+    usage: { prompt: data?.usage?.prompt_tokens, completion: data?.usage?.completion_tokens },
+  };
+}
+
 /**
- * Minimal client for the BharatCode chat-completions API (OpenAI-compatible
- * request/response shape), with content-hash caching and a hard token budget.
+ * One client for every provider: content-hash response cache, hard token
+ * budget, retries on 429/5xx, and a single "grow and retry" when reasoning
+ * exhausts the output budget before the answer is written.
  */
-export class BharatCodeClient {
-  constructor({ apiKey, baseUrl = DEFAULT_BASE_URL, model = DEFAULT_MODEL, reasoningEffort, cacheDir, budget = 250_000, useCache = true, timeoutMs = 180_000, fetchImpl } = {}) {
-    this.apiKey = apiKey;
-    this.baseUrl = baseUrl;
-    this.model = model;
-    this.reasoningEffort = reasoningEffort;
+export class ModelClient {
+  constructor({ provider, cacheDir, budget = 250_000, useCache = true, timeoutMs = 240_000, fetchImpl } = {}) {
+    this.p = provider;
+    this.model = provider.model;
     this.cacheDir = cacheDir;
     this.budget = budget;
     this.useCache = useCache && !!cacheDir;
     this.timeoutMs = timeoutMs;
     this.fetch = fetchImpl || globalThis.fetch;
     this.usage = { prompt: 0, completion: 0, calls: 0, cached: 0 };
+  }
+
+  get label() {
+    return `${this.p.provider}/${this.p.model}`;
   }
 
   get spent() {
@@ -66,9 +114,9 @@ export class BharatCodeClient {
     return path.join(this.cacheDir, 'responses', key.slice(0, 2), `${key}.json`);
   }
 
-  /** Send one chat completion; returns the assistant text. */
+  /** Send one prompt; returns the assistant text. */
   async complete({ system, user, maxTokens = 1500, temperature = 0.2 }) {
-    const key = sha(JSON.stringify([this.model, system, user, maxTokens, temperature]));
+    const key = sha(JSON.stringify([this.p.provider, this.p.model, this.p.effort || '', system, user, maxTokens]));
     if (this.useCache) {
       const hit = readJSON(this.cacheFile(key));
       if (hit && typeof hit.text === 'string') {
@@ -76,81 +124,71 @@ export class BharatCodeClient {
         return hit.text;
       }
     }
+    // Budget on the nominal output size; providers that think get extra headroom below.
     const projected = estTokens(system) + estTokens(user) + maxTokens;
     if (projected > this.remaining) {
       throw new BudgetError(`token budget exhausted (${this.spent}/${this.budget} used, call needs ~${projected})`);
     }
 
-    const body = {
-      model: this.model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      max_tokens: maxTokens,
-      temperature,
-      ...(this.reasoningEffort ? { reasoning_effort: this.reasoningEffort } : {}),
-    };
+    let outTokens = Math.max(maxTokens, this.p.minOutputTokens || 0);
+    const name = PROVIDERS[this.p.provider]?.label || this.p.provider;
     let lastErr;
-    let grown = false;
-    let didGrow = false;
+    let grew = false;
     for (let attempt = 0; attempt < 4; attempt++) {
-      if (attempt && !grown) await sleep(2000 * 2 ** (attempt - 1));
-      grown = false;
+      const req = buildRequest(this.p, { system, user, maxTokens: outTokens, temperature });
       let res;
       try {
-        res = await this.fetch(`${this.baseUrl}/chat/completions`, {
+        res = await this.fetch(req.url, {
           method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            authorization: `Bearer ${this.apiKey}`,
-          },
-          body: JSON.stringify(body),
+          headers: req.headers,
+          body: JSON.stringify(req.body),
           signal: AbortSignal.timeout(this.timeoutMs),
         });
       } catch (err) {
-        lastErr = new Error(`BharatCode request failed: ${err.message}`);
+        lastErr = new Error(`${name} request failed: ${err.message}`);
+        await sleep(2000 * 2 ** attempt);
         continue;
       }
-      if (res.status === 429 || res.status >= 500) {
-        lastErr = new Error(`BharatCode API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      if (res.status === 429 || res.status === 529 || res.status >= 500) {
+        lastErr = new Error(`${name} API ${res.status}: ${(await res.text()).slice(0, 200)}`);
+        const retryAfter = Number(res.headers?.get?.('retry-after'));
+        await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 30) * 1000 : 2000 * 2 ** attempt);
         continue;
       }
       if (!res.ok) {
-        throw new Error(`BharatCode API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+        throw new Error(`${name} API ${res.status}: ${(await res.text()).slice(0, 300)}`);
       }
       const data = await res.json();
-      const text = extractText(data);
-      const u = data.usage || {};
-      this.usage.prompt += u.prompt_tokens ?? u.input_tokens ?? estTokens(system) + estTokens(user);
-      this.usage.completion += u.completion_tokens ?? u.output_tokens ?? estTokens(text || '');
+      const out = parseResponse(this.p, data);
+      this.usage.prompt += out.usage.prompt ?? estTokens(system) + estTokens(user);
+      this.usage.completion += out.usage.completion ?? estTokens(out.text || '');
       this.usage.calls++;
-      // Reasoning can exhaust the output budget before any answer is written: grow once and retry.
-      if (data?.choices?.[0]?.finish_reason === 'length' && !didGrow && body.max_tokens * 2 <= this.remaining) {
-        body.max_tokens *= 2;
-        didGrow = true;
-        lastErr = new Error('BharatCode output hit the token limit');
-        grown = true;
+      if (out.refused) throw new RefusalError(`${name} declined this request`);
+      if (out.truncated && !grew && outTokens * 2 <= Math.min(this.remaining, 32000)) {
+        outTokens *= 2;
+        grew = true;
+        lastErr = new Error(`${name} output hit the token limit`);
         continue;
       }
-      if (typeof text !== 'string' || !text.trim()) throw new Error('BharatCode API returned no message content');
-      if (this.useCache) writeJSON(this.cacheFile(key), { model: this.model, text });
-      return text;
+      if (typeof out.text !== 'string' || !out.text.trim()) throw new Error(`${name} returned no message content`);
+      if (this.useCache) writeJSON(this.cacheFile(key), { model: this.label, text: out.text });
+      return out.text;
     }
     throw lastErr;
   }
 }
 
-function extractText(data) {
-  const choice = data?.choices?.[0];
-  if (choice) {
-    const c = choice.message?.content ?? choice.text;
-    if (typeof c === 'string') return c;
-    if (Array.isArray(c)) return c.map((p) => p.text || '').join('');
+/** Back-compat: the BharatCode client is now a ModelClient on the bharatcode provider. */
+export class BharatCodeClient extends ModelClient {
+  constructor({ apiKey, baseUrl, model, reasoningEffort, ...rest } = {}) {
+    const provider = resolveProvider({
+      provider: 'bharatcode',
+      model,
+      env: { BHARATCODE_API_KEY: apiKey || 'unset', ...(baseUrl ? { BHARATCODE_BASE_URL: baseUrl } : {}), ...(reasoningEffort !== undefined ? { BHARATCODE_REASONING_EFFORT: reasoningEffort } : {}) },
+      config: { keys: {}, models: {} },
+    });
+    super({ provider, ...rest });
   }
-  if (Array.isArray(data?.content)) return data.content.map((p) => p.text || '').join('');
-  if (typeof data?.output_text === 'string') return data.output_text;
-  return null;
 }
 
 export function clearCache(cacheDir) {
