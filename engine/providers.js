@@ -25,6 +25,7 @@ export const PROVIDERS = {
     model: 'qwen-3.8-27b',
     effortParam: 'reasoning_effort',
     effort: 'low',
+    verifyWithChat: true,
     keyUrl: 'https://bharatcode.ai/account',
   },
   anthropic: {

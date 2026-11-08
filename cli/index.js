@@ -16,6 +16,7 @@ import {
 } from '../engine/index.js';
 import { formatDuration, readJSON } from '../engine/util.js';
 import { runTUI, printCourse } from './tui.js';
+import { cmdLogin, cmdLogout, cmdProviders, cmdUse } from './providers-cmd.js';
 
 const pkg = readJSON(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), {});
 const color = process.stdout.isTTY && !process.env.NO_COLOR;
@@ -35,7 +36,16 @@ ${bold('Usage')}
   curriculo rank <repo-url-or-path>  Show which files Curriculo would teach, and why
   curriculo badge                    Print a README badge linking to LEARN.md
 
+${bold('Model providers')}
+  curriculo login <provider> [key]   Save an API key locally (~/.curriculo/config.json)
+  curriculo use <provider>           Make a provider the default (--model to pin a model)
+  curriculo providers                List providers, saved keys and the active one
+  curriculo logout <provider>        Remove a saved key
+  Providers: bharatcode (default), anthropic, openai, gemini, openrouter, groq, ollama, custom
+
 ${bold('gen options')}
+  --provider <name>    Model provider for this run (default: your saved choice, else BharatCode)
+  --model <id>         Model id for this run
   --offline            Heuristic course, no model calls (no API key needed)
   --lessons <n>        Maximum lessons (default ${DEFAULTS.maxLessons})
   --top <n>            Size of the ranked teaching set (default ${DEFAULTS.top})
@@ -46,14 +56,16 @@ ${bold('gen options')}
   --learn              Open the course right after generating it
 
 ${bold('Environment')}
-  BHARATCODE_API_KEY   API key from https://bharatcode.ai/account (env only; never written to disk)
-  BHARATCODE_MODEL     Model id (default qwen-3.8-27b; deepseek-v4.1-flash on Pro)
-  BHARATCODE_BASE_URL  API base URL (default https://bharatcode.ai/api/model/v1)
-  BHARATCODE_REASONING_EFFORT  none, low, medium or high (default low)
+  BHARATCODE_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY,
+  OPENROUTER_API_KEY, GROQ_API_KEY   Keys (env vars win over saved keys)
+  CURRICULO_PROVIDER / CURRICULO_MODEL  Override the provider / model
+  CURRICULO_BASE_URL + CURRICULO_API_KEY  Endpoint and key for the "custom" provider
+  CURRICULO_REASONING_EFFORT  Reasoning effort where supported (default low; Anthropic medium)
 
 ${bold('Examples')}
   npx github:Darshit42/Curriculo gen expressjs/express --learn
   npx github:Darshit42/Curriculo gen . --offline
+  npx github:Darshit42/Curriculo gen . --provider anthropic
   npx github:Darshit42/Curriculo learn
 `;
 
@@ -94,6 +106,8 @@ async function cmdGen(args, opts) {
       budget: int(opts.budget, 'budget') ?? DEFAULTS.budget,
       concurrency: int(opts.concurrency, 'concurrency') ?? DEFAULTS.concurrency,
       useCache: !opts['no-cache'],
+      provider: opts.provider,
+      model: opts.model,
       log,
     });
   } catch (err) {
@@ -113,7 +127,7 @@ async function cmdGen(args, opts) {
   if (course.model === 'offline-heuristic') {
     out.push(`  ${dim('model')}   offline heuristics (0 tokens)`);
   } else {
-    out.push(`  ${dim('model')}   ${course.model}`);
+    out.push(`  ${dim('model')}   ${course.provider ? `${course.provider} · ` : ''}${course.model}`);
     out.push(`  ${dim('tokens')}  ${(t.prompt + t.completion).toLocaleString()} spent (${t.prompt.toLocaleString()} in / ${t.completion.toLocaleString()} out) · ${t.calls} calls · ${t.cached} cached`);
   }
   out.push(`  ${dim('wrote')}   ${result.learnPath}`);
@@ -183,6 +197,10 @@ async function main() {
         out: { type: 'string' },
         'no-cache': { type: 'boolean' },
         learn: { type: 'boolean' },
+        provider: { type: 'string' },
+        model: { type: 'string' },
+        default: { type: 'boolean' },
+        'no-verify': { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
         version: { type: 'boolean', short: 'v' },
       },
@@ -204,6 +222,14 @@ async function main() {
       return cmdRender(args);
     case 'rank':
       return cmdRank(args, opts);
+    case 'login':
+      return cmdLogin(args, opts, fail);
+    case 'logout':
+      return cmdLogout(args, opts, fail);
+    case 'use':
+      return cmdUse(args, opts, fail);
+    case 'providers':
+      return void cmdProviders();
     case 'badge':
       return void process.stdout.write(badgeMarkdown() + '\n');
     default:

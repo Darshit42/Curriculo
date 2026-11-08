@@ -157,7 +157,7 @@ test('model generation via a mocked BharatCode API, with degradation and no key 
     }
     return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 100, completion_tokens: 50 } }));
   };
-  const env = { BHARATCODE_API_KEY: 'sk-test-123', BHARATCODE_BASE_URL: 'https://mock/v1', BHARATCODE_MODEL: 'mock' };
+  const env = { CURRICULO_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'curriculo-home-')), BHARATCODE_API_KEY: 'sk-test-123', BHARATCODE_BASE_URL: 'https://mock/v1', BHARATCODE_MODEL: 'mock' };
   const r = await generateCourse({ source: dir, env, fetchImpl, useCache: false });
   const [one, two] = r.course.lessons;
   assert.equal(one.quiz.length, 1);
@@ -169,5 +169,5 @@ test('model generation via a mocked BharatCode API, with degradation and no key 
 });
 
 test('missing config fails fast with a helpful message', async () => {
-  await assert.rejects(generateCourse({ source: fixture(), env: {} }), /BHARATCODE_API_KEY.*--offline/s);
+  await assert.rejects(generateCourse({ source: fixture(), env: { CURRICULO_HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'curriculo-home-')) } }), /BHARATCODE_API_KEY.*--offline/s);
 });
