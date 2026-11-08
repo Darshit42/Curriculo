@@ -4,9 +4,20 @@
  *   context [path]            write .curriculo/context.json for the host model
  *   finalize [path]           validate .curriculo/course.json and render LEARN.md
  *   gen [path] [--offline]    full engine run (BharatCode or offline heuristics)
+ *   map [path]                module map + import graph -> .curriculo/map.json, text + Mermaid
+ *   focus <file|folder> [path]  grounded excerpts + connections for one file or folder
+ *   ask "<question>" [path] [--about=<file|folder>]  answer via the configured provider
  */
 import path from 'node:path';
 import {
+  ModelClient,
+  askAboutCode,
+  askPrompt,
+  buildCodeMap,
+  loadCourse,
+  mermaidModules,
+  resolveProvider,
+  textModuleMap,
   buildCourse,
   generateCourse,
   ingest,
@@ -93,9 +104,73 @@ async function gen() {
   }
 }
 
+const positionals = rest.filter((a) => !a.startsWith('--'));
+const flagValue = (name) => rest.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const clean = (p) => (p || '').replace(/\\/g, '/').replace(/^\.?\//, '').replace(/\/+$/, '');
+
+function loadRepo(where) {
+  const src = resolveSource(where || '.');
+  const ing = ingest(src.root);
+  if (!ing.files.length) die(`no readable source files in ${src.root}`);
+  let course = null;
+  try {
+    course = loadCourse(src.root);
+  } catch {
+    /* no course yet */
+  }
+  return { src, ing, map: buildCodeMap(ing), course };
+}
+
+function mapCmd() {
+  const { src, map } = loadRepo(target);
+  const files = [...map.files.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 60)
+    .map(({ path: p, lines, score, entry, reasons, module, imports, importedBy }) => ({ path: p, lines, score, entry, reasons, module, imports, importedBy }));
+  const out = path.join(src.root, '.curriculo', 'map.json');
+  writeJSON(out, { repo: src.repoId, modules: map.modules, moduleEdges: map.moduleEdges, files });
+  process.stdout.write(
+    `repo: ${src.repoId} · ${map.files.size} files · ${map.edgeCount} import links\nWrote ${out} (top ${files.length} files with imports/importedBy)\n\n` +
+      `${textModuleMap(map)}\n\nMermaid:\n\`\`\`mermaid\n${mermaidModules(map)}\n\`\`\`\n`,
+  );
+}
+
+function focusCmd() {
+  const [what, where] = positionals;
+  if (!what) die('usage: run.js focus <file-or-folder> [repo-path]');
+  const { src, ing, map, course } = loadRepo(where);
+  const t = clean(what);
+  if (t && !map.files.has(t) && ![...map.files.keys()].some((p) => p.startsWith(t + '/'))) die(`"${t}" is not an indexed file or folder`);
+  const prompt = askPrompt({ ing, map, target: t, question: '(answer the user’s question from the material above)', repo: src.repoId, summary: course?.summary });
+  process.stdout.write(prompt.user + '\n');
+}
+
+async function askCmd() {
+  const [question, where] = positionals;
+  if (!question) die('usage: run.js ask "<question>" [repo-path] [--about=<file-or-folder>]');
+  const { src, ing, map, course } = loadRepo(where);
+  try {
+    const provider = resolveProvider({});
+    const client = new ModelClient({ provider, cacheDir: path.join(src.root, '.curriculo', 'cache') });
+    const answer = await askAboutCode({ client, ing, map, target: clean(flagValue('about')), question, repo: src.repoId, summary: course?.summary });
+    process.stdout.write(answer + '\n');
+  } catch (err) {
+    die(err.message);
+  }
+}
+
 switch (cmd) {
   case 'context':
     context();
+    break;
+  case 'map':
+    mapCmd();
+    break;
+  case 'focus':
+    focusCmd();
+    break;
+  case 'ask':
+    await askCmd();
     break;
   case 'finalize':
     finalize();
@@ -104,5 +179,5 @@ switch (cmd) {
     await gen();
     break;
   default:
-    process.stdout.write('usage: run.js <context|finalize|gen> [repo-path] [--offline]\n');
+    process.stdout.write('usage: run.js <context|finalize|gen|map|focus|ask> ...  (see SKILL.md)\n');
 }

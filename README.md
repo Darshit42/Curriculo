@@ -89,6 +89,32 @@ Files (press the number to open in your editor):
 ↑/↓ scroll · 1-9 open file · enter quiz · ← back · n/p next/prev · q quit
 ```
 
+### See how it all connects: `curriculo explore`
+
+```bash
+npx github:Darshit42/Curriculo explore expressjs/express
+```
+
+A visual map of the codebase in your terminal:
+
+- **Folder tree.** Entry points are marked ★ and the most important files ●. When you select a file, the files it imports get a → and the files that import it get a ←, right in the tree.
+- **Details pane.** Shows imports, importers, key definitions with line numbers, which lesson teaches the file, and for folders, the most important files plus what the folder depends on and what uses it.
+- **Connection graph** (`enter` or `g`). Importers on the left, the file in the middle, its imports on the right. Pick a neighbour and press `enter` to walk the graph.
+- **Module map** (`m`). Every part of the project, sized by files, showing which parts use which.
+- **Ask** (`?`). Ask about the selected file, folder or module. The answer comes from your configured model, grounded in that code and its neighbours, with `path:line` citations.
+- **Open** (`o`). Opens the file in your editor, or the folder in the editor or file manager. `/` finds a file by name.
+
+The connection graph for Express's `lib/application.js` looks like this:
+
+```
+                             imported by (1)                          imports (2)
+                              lib/express.js ─┐  ┌────────────────┐  ┌─▶ lib/utils.js
+                                              └─▶│ application.js │──┴─▶ lib/view.js
+                                                 └────────────────┘
+```
+
+Without the TUI: `curriculo map` prints the module map (`--mermaid` for a diagram you can paste into Markdown, `--json` for data), and `curriculo ask "How does a request reach my route handler?" --about lib/application.js` answers from the terminal.
+
 ## Commands
 
 | Command | Does |
@@ -97,6 +123,9 @@ Files (press the number to open in your editor):
 | `curriculo learn [path]` | Interactive TUI: lesson list → lesson → quiz, with saved progress |
 | `curriculo render [path]` | Re-render `LEARN.md` from the manifest, e.g. after hand edits |
 | `curriculo rank <url-or-path>` | Show which files would be taught, and why |
+| `curriculo explore [url-or-path]` | Visual explorer: tree, connections graph, module map, open files, ask questions |
+| `curriculo map [url-or-path]` | Module map as text, `--mermaid` diagram or `--json` |
+| `curriculo ask "<question>" [path]` | Grounded answer about the repo; `--about <file-or-folder>` to focus |
 | `curriculo badge` | Print the README badge that links to `LEARN.md` |
 | `curriculo login <provider>` | Verify and save an API key locally |
 | `curriculo use <provider>` | Set the default provider (and `--model`) |

@@ -75,3 +75,21 @@ test('ask prompts are grounded in the selection and its neighbours', async () =>
   const client = { complete: async ({ user }) => `  answer for ${user.length > 0 ? 'ok' : ''}  ` };
   assert.equal(await askAboutCode({ client, ing, map, target: '', question: 'q', repo: 'demo' }), 'answer for ok');
 });
+
+test('connection diagram: junctions and layout', async () => {
+  const { junction, drawNeighbourhood } = await import('../cli/explore.js');
+  assert.equal(junction(true, true, false, false), '│');
+  assert.equal(junction(false, true, true, false), '┐');
+  assert.equal(junction(true, true, true, true), '┼');
+  assert.equal(junction(true, false, true, true), '┴');
+  const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+  const g = drawNeighbourhood('lib/app.js', ['lib/express.js'], ['lib/utils.js', 'lib/view.js'], { width: 100, rows: 10 });
+  const lines = g.lines.map(strip);
+  assert.deepEqual(g.items, ['lib/express.js', 'lib/utils.js', 'lib/view.js']);
+  assert.match(lines[0], /imported by \(1\).*imports \(2\)/);
+  assert.match(lines[1], /lib\/express\.js ─┐ +┌─+┐ +┌─▶ lib\/utils\.js/);
+  assert.match(lines[2], /└─▶│ +app\.js +│──┴─▶ lib\/view\.js/);
+  const lonely = drawNeighbourhood('x.js', [], [], { width: 80 }).lines.map(strip);
+  assert.match(lonely[0], /imported by: nothing.*imports: nothing/);
+  assert.ok(lonely.some((l) => /│ +x\.js +│/.test(l)));
+});

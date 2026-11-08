@@ -1,7 +1,11 @@
 ---
 name: curriculo
-description: Turn the current repository into a guided onboarding course — ordered lessons grounded in real files, code-based quizzes, and a committable LEARN.md. Use when the user wants to learn a codebase, onboard to this repo, understand where to start reading, or generate a course or LEARN.md.
+description: Turn the current repository into a guided onboarding course — ordered lessons grounded in real files, code-based quizzes, and a committable LEARN.md — and map how the code connects (module map, import graph, Mermaid diagram) to answer questions about any file or folder. Use when the user wants to learn a codebase, onboard to this repo, understand where to start reading, see how the pieces connect or visualize the architecture, ask how a file/folder works, or generate a course or LEARN.md.
 ---
+
+> Two flows: **make a course** (Steps below) and **explore & ask** (section after).
+> Pick by intent: "course", "LEARN.md", "onboarding guide" → course; "how is this
+> connected", "show me the architecture", "what does X do", "where is Y handled" → explore & ask.
 
 # Curriculo — make a course for this repo
 
@@ -59,6 +63,39 @@ current working directory). `SKILL_DIR` below is the directory containing this f
 4. **Summarize** for the user: the lesson list, and that they can take the course
    interactively with `npx github:Darshit42/Curriculo learn` or commit `LEARN.md` (badge:
    `npx github:Darshit42/Curriculo badge`).
+
+## Explore & ask: how does this codebase connect?
+
+1. **Map it.**
+   ```bash
+   node "$SKILL_DIR/scripts/run.js" map <repo-path>
+   ```
+   Prints the module map (modules ranked by importance, and which modules import
+   which, with counts) plus a ready-made Mermaid `flowchart`, and writes
+   `.curriculo/map.json` with the top files, their `imports` and `importedBy`.
+
+2. **Show it.** Give the user the picture first: paste the Mermaid diagram (it
+   renders in most chat and Markdown surfaces), then a short tour — the entry
+   point(s) (`entry: true` in map.json), the 3-5 most important files, and how a
+   request/command/data flows across modules. Keep file paths exact so they can
+   open them. A folder tree for one area is fine as an indented list.
+
+3. **Answer questions about a file or folder.** Load the grounded context:
+   ```bash
+   node "$SKILL_DIR/scripts/run.js" focus <file-or-folder> <repo-path>
+   ```
+   It prints the selection's excerpts (line-numbered), what it imports and what
+   imports it, and its neighbours' key lines. Answer from that — open the files
+   themselves when you need more — and cite `path:line`. Say plainly when the code
+   does not show the answer, and name where to look next.
+
+4. **Point to the interactive explorer** for hands-on browsing in a terminal:
+   `npx github:Darshit42/Curriculo explore` — a folder tree with importance
+   markers, imports (→) and importers (←), a walkable connection graph, a module
+   map, open-in-editor for any file or folder, and `?` to ask about the selection.
+
+If a provider is configured and the user prefers BharatCode's answer, run
+`node "$SKILL_DIR/scripts/run.js" ask "<question>" <repo-path> --about=<file-or-folder>`.
 
 ## Alternative: BharatCode backend
 
