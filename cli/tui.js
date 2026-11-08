@@ -158,13 +158,15 @@ export function runTUI({ course, root }) {
       for (const ln of wrap(q.q, w)) body.push(' ' + styleLine(ln, {}));
       body.push('');
       q.choices.forEach((c, i) => {
-        let line = `  ${A.yellow(LETTERS[i])}) ${styleLine(c, {})}`;
-        if (st.picked !== null) {
-          if (i === q.answer) line = `  ${A.green('✓')} ${A.green(stripAnsi(line).trim())}`;
-          else if (i === st.picked) line = `  ${A.red('✗')} ${A.red(stripAnsi(line).trim())}`;
-          else line = A.dim(line);
-        }
-        body.push(line);
+        // Wrap long choices with a hanging indent so they line up under the text.
+        const wrapped = wrap(c, w - 5);
+        const mark = st.picked === null ? ' ' : i === q.answer ? A.green('✓') : i === st.picked ? A.red('✗') : ' ';
+        const color = i === q.answer ? A.green : i === st.picked ? A.red : A.dim;
+        const tone = st.picked === null ? (s) => styleLine(s, {}) : (s) => color(s.replace(/`/g, ''));
+        wrapped.forEach((part, j) => {
+          const prefix = j === 0 ? `${mark} ${A.yellow(LETTERS[i])}) ` : '     ';
+          body.push(` ${prefix}${tone(part)}`);
+        });
       });
       body.push('');
       if (st.picked !== null) {
