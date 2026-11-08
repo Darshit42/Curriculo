@@ -21,6 +21,8 @@ export { PROVIDERS, configPath, loadConfig, maskKey, providerNames, resolveProvi
 export * from './manifest.js';
 export { renderLearnMd, badgeMarkdown } from './render.js';
 export { offlineCourse } from './offline.js';
+export { buildCodeMap, buildTree, describeFile, mermaidModules, moduleOf, textModuleMap } from './graph.js';
+export { askAboutCode, askPrompt } from './ask.js';
 
 export const DEFAULTS = { maxLessons: 8, top: 24, budget: 250_000, concurrency: 8 };
 

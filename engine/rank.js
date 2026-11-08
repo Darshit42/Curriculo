@@ -115,7 +115,8 @@ function importSpecs(f) {
     const re = /(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]|require\(\s*['"]([^'"]+)['"]\s*\)|^\s*import\s+['"]([^'"]+)['"]/gm;
     while ((m = re.exec(c))) {
       const s = m[1] || m[2] || m[3] || m[4];
-      push(s, s.startsWith('.'));
+      // Bare names ("ejs", "react") are npm packages, not repo files: only relative and alias paths resolve.
+      if (s.startsWith('.')) push(s, true);
       if (!s.startsWith('.') && /^[@~#]\//.test(s)) push(s.slice(2), false);
     }
   } else if (f.ext === 'py') {
@@ -155,18 +156,18 @@ function importSpecs(f) {
   return specs;
 }
 
-/** Count how many distinct files import each file (approximate, regex-based). */
-export function computeFanIn(files) {
+/**
+ * Resolve imports between repo files (approximate, regex-based).
+ * Returns Map<importer, Map<imported, confidence 0..1>>; ambiguous matches share confidence.
+ */
+export function computeImportEdges(files) {
   const byPath = new Set(files.map((f) => f.path));
   const suffix = buildSuffixIndex(files);
-  const fanIn = new Map();
-  const bump = (target, w = 1) => fanIn.set(target, (fanIn.get(target) || 0) + w);
+  const edges = new Map();
 
   for (const f of files) {
     if (!CODE_EXT.has(f.ext)) continue;
     const dir = path.posix.dirname(f.path);
-    // Imports from tests/examples say less about what is load-bearing.
-    const weight = TEST_RE.test(f.path) || PERIPHERAL_RE.test(f.path) ? 0.25 : 1;
     const targets = new Map();
     const add = (cands) => {
       const list = cands.filter((t) => t !== f.path);
@@ -206,7 +207,17 @@ export function computeFanIn(files) {
         }
       }
     }
-    for (const [t, w] of targets) bump(t, w * weight);
+    if (targets.size) edges.set(f.path, targets);
+  }
+  return edges;
+}
+
+/** Weighted count of files importing each file; imports from tests/examples count 1/4. */
+export function computeFanIn(files, edges = computeImportEdges(files)) {
+  const fanIn = new Map();
+  for (const [from, targets] of edges) {
+    const weight = TEST_RE.test(from) || PERIPHERAL_RE.test(from) ? 0.25 : 1;
+    for (const [t, w] of targets) fanIn.set(t, (fanIn.get(t) || 0) + w * weight);
   }
   return fanIn;
 }
@@ -215,9 +226,9 @@ export function computeFanIn(files) {
  * Score every file by teaching value. Returns files sorted best-first:
  * [{ path, score, fanIn, reasons, entry }].
  */
-export function rankFiles(files) {
+export function rankFiles(files, edges) {
   const entries = declaredEntries(files);
-  const fanIn = computeFanIn(files);
+  const fanIn = computeFanIn(files, edges);
   const ranked = files.map((f) => {
     const reasons = [];
     let score = 0;
