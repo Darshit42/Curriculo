@@ -1,0 +1,41 @@
+{
+  "name": "curriculo",
+  "version": "0.1.0",
+  "description": "Turn any Git repository into a guided, interactive course with code-grounded quizzes and a committable LEARN.md.",
+  "type": "module",
+  "bin": {
+    "curriculo": "cli/index.js"
+  },
+  "main": "engine/index.js",
+  "exports": {
+    ".": "./engine/index.js"
+  },
+  "files": [
+    "engine",
+    "cli",
+    "skill",
+    "README.md",
+    "BharatCode.txt"
+  ],
+  "scripts": {
+    "test": "node --test test/",
+    "start": "node cli/index.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "onboarding",
+    "codebase",
+    "course",
+    "learning",
+    "cli",
+    "tui",
+    "documentation"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Darshit42/Curriculo.git"
+  }
+}

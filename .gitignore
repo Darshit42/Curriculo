@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+*.log
+.env
+.env.*
+# Curriculo local state (the course manifest itself may be committed)
+.curriculo/cache/
+.curriculo/progress.json
+.curriculo/context.json
