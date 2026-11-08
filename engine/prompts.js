@@ -35,7 +35,7 @@ Respond with JSON only, no prose, in exactly this shape:
     { "title": "Short title (max 8 words)", "goal": "What the learner will understand after this lesson", "files": ["path/from/list.ext"] }
   ]
 }`;
-  return { system: SYSTEM, user, maxTokens: 1800 };
+  return { system: SYSTEM, user, maxTokens: 3000 };
 }
 
 export function lessonPrompt({ repo, summary, lesson, index, total, outline, slices }) {
@@ -59,7 +59,7 @@ Write the lesson body in GitHub-flavored Markdown, 250-450 words.
 - Explain what each file is responsible for, how it connects to the rest of the course, and the order to read it in.
 - End with a "**Watch out:**" line naming one non-obvious detail a newcomer could get wrong.
 - Use at most "###" headings. Do not include the lesson title. Do not wrap the answer in a code fence.`;
-  return { system: SYSTEM, user, maxTokens: 1100 };
+  return { system: SYSTEM, user, maxTokens: 2000 };
 }
 
 export function quizPrompt({ lesson, body, slices }) {
@@ -78,7 +78,7 @@ Write 2 multiple-choice questions that check whether the learner understood THIS
 Respond with JSON only:
 { "quiz": [ { "q": "Question?", "choices": ["A", "B", "C"], "answer": 0, "why": "One sentence citing the file that proves it." } ] }
 "answer" is the 0-based index of the correct choice.`;
-  return { system: SYSTEM, user, maxTokens: 700 };
+  return { system: SYSTEM, user, maxTokens: 1200 };
 }
 
 export function retrySuffix(error) {

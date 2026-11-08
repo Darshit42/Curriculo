@@ -9,7 +9,7 @@ import { quizError } from './manifest.js';
 import { offlineLessonBody, offlineOutline } from './offline.js';
 import { lessonPrompt, outlinePrompt, quizPrompt, retrySuffix } from './prompts.js';
 import { signalSlice } from './slice.js';
-import { parseJSONLoose, pool } from './util.js';
+import { parseJSONLoose, pool, shuffle } from './util.js';
 
 /** Call the model, validate, retry once with the validation error appended. */
 async function callValidated(client, prompt, validate) {
@@ -68,7 +68,8 @@ export function validateQuiz(text) {
   if (!Array.isArray(raw)) return { error: 'expected {"quiz": [...]}' };
   const good = raw.filter((q) => !quizError(q)).slice(0, 2);
   if (!good.length) return { error: `no valid questions (${quizError(raw[0]) || 'empty list'})` };
-  return { value: good };
+  // Models favour answer 0 (as in the example); shuffle choices deterministically, keeping the mapping.
+  return { value: good.map(shuffleChoices) };
 }
 
 export async function synthesizeWithModel({ repoId, ing, ranked, teaching, client, maxLessons = 8, concurrency = 4, log = () => {} }) {
@@ -132,4 +133,9 @@ export async function synthesizeWithModel({ repoId, ing, ranked, teaching, clien
   });
 
   return { summary: outline.summary, lessons };
+}
+
+export function shuffleChoices(q) {
+  const order = shuffle(q.choices.map((_, i) => i), q.q);
+  return { ...q, choices: order.map((i) => q.choices[i]), answer: order.indexOf(q.answer) };
 }

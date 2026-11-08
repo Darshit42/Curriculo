@@ -20,7 +20,7 @@ export * from './manifest.js';
 export { renderLearnMd, badgeMarkdown } from './render.js';
 export { offlineCourse } from './offline.js';
 
-export const DEFAULTS = { maxLessons: 8, top: 24, budget: 250_000, concurrency: 4 };
+export const DEFAULTS = { maxLessons: 8, top: 24, budget: 250_000, concurrency: 8 };
 
 /** Write the LEARN.md and keep local-only state out of the user's commits. */
 export function writeOutputs(root, course) {

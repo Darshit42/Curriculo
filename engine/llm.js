@@ -13,11 +13,16 @@ export class BudgetError extends Error {
  * Read BharatCode settings from the environment. The API key is only ever
  * held in memory; it is never written to the manifest, cache or LEARN.md.
  */
+export const DEFAULT_BASE_URL = 'https://bharatcode.ai/api/model/v1';
+export const DEFAULT_MODEL = 'qwen-3.8-27b';
+
 export function configFromEnv(env = process.env) {
   return {
     apiKey: env.BHARATCODE_API_KEY || '',
-    baseUrl: (env.BHARATCODE_BASE_URL || '').replace(/\/+$/, ''),
-    model: env.BHARATCODE_MODEL || '',
+    baseUrl: (env.BHARATCODE_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, ''),
+    model: env.BHARATCODE_MODEL || DEFAULT_MODEL,
+    // Reasoning tokens count against max_tokens; "low" keeps lessons grounded but cheap.
+    reasoningEffort: env.BHARATCODE_REASONING_EFFORT ?? 'low',
   };
 }
 
@@ -36,10 +41,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * request/response shape), with content-hash caching and a hard token budget.
  */
 export class BharatCodeClient {
-  constructor({ apiKey, baseUrl, model, cacheDir, budget = 250_000, useCache = true, timeoutMs = 120_000, fetchImpl } = {}) {
+  constructor({ apiKey, baseUrl = DEFAULT_BASE_URL, model = DEFAULT_MODEL, reasoningEffort, cacheDir, budget = 250_000, useCache = true, timeoutMs = 180_000, fetchImpl } = {}) {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl;
     this.model = model;
+    this.reasoningEffort = reasoningEffort;
     this.cacheDir = cacheDir;
     this.budget = budget;
     this.useCache = useCache && !!cacheDir;
@@ -83,10 +89,14 @@ export class BharatCodeClient {
       ],
       max_tokens: maxTokens,
       temperature,
+      ...(this.reasoningEffort ? { reasoning_effort: this.reasoningEffort } : {}),
     };
     let lastErr;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt) await sleep(1500 * 2 ** (attempt - 1));
+    let grown = false;
+    let didGrow = false;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt && !grown) await sleep(2000 * 2 ** (attempt - 1));
+      grown = false;
       let res;
       try {
         res = await this.fetch(`${this.baseUrl}/chat/completions`, {
@@ -111,11 +121,19 @@ export class BharatCodeClient {
       }
       const data = await res.json();
       const text = extractText(data);
-      if (typeof text !== 'string') throw new Error('BharatCode API returned no message content');
       const u = data.usage || {};
       this.usage.prompt += u.prompt_tokens ?? u.input_tokens ?? estTokens(system) + estTokens(user);
-      this.usage.completion += u.completion_tokens ?? u.output_tokens ?? estTokens(text);
+      this.usage.completion += u.completion_tokens ?? u.output_tokens ?? estTokens(text || '');
       this.usage.calls++;
+      // Reasoning can exhaust the output budget before any answer is written: grow once and retry.
+      if (data?.choices?.[0]?.finish_reason === 'length' && !didGrow && body.max_tokens * 2 <= this.remaining) {
+        body.max_tokens *= 2;
+        didGrow = true;
+        lastErr = new Error('BharatCode output hit the token limit');
+        grown = true;
+        continue;
+      }
+      if (typeof text !== 'string' || !text.trim()) throw new Error('BharatCode API returned no message content');
       if (this.useCache) writeJSON(this.cacheFile(key), { model: this.model, text });
       return text;
     }
