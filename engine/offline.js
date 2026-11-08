@@ -121,7 +121,9 @@ export function offlineLessonBody(lesson, byPath, rankByPath) {
     out.push('');
   }
   if (lesson.files.length > 1) {
-    out.push(`Suggested reading order: ${lesson.files.map((p) => `\`${path.posix.basename(p)}\``).join(' → ')}.`);
+    const bases = lesson.files.map((p) => path.posix.basename(p));
+    const label = new Set(bases).size === bases.length ? bases : lesson.files;
+    out.push(`Suggested reading order: ${label.map((p) => `\`${p}\``).join(' → ')}.`);
   }
   return out.join('\n').trim();
 }
