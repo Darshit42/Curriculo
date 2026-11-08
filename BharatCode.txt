@@ -42,8 +42,10 @@ TRY IT (Node.js 18+, no install, zero dependencies)
 
 HOW BHARATCODE IS USED
 ----------------------
-Every model call goes to qwen-3.8-27b through /chat/completions, in a short
-prompt chain:
+By default every model call goes to qwen-3.8-27b through /chat/completions
+(BharatCode is the default provider; Anthropic, OpenAI, Gemini, OpenRouter,
+Groq, Ollama and any OpenAI-compatible API are supported via --provider),
+in a short prompt chain:
   1. Repo summary + outline   - from the directory tree, README and entry points
   2. Lesson synthesis          - each lesson sees ONLY its own files' excerpts
                                  (run in parallel)
@@ -77,8 +79,9 @@ PRIVACY AND SAFETY
 - Honors .gitignore; never reads .env files, keys, certificates or anything
   matching credential/secret patterns
 - Only ranked, truncated excerpts are sent to the model, never the full tree
-- The API key is read from the environment only and is never written to the
-  manifest, cache or LEARN.md
+- API keys come from an env var or ~/.curriculo/config.json (saved by
+  `curriculo login`, owner-only); never written to the repo, manifest,
+  cache or LEARN.md
 
 TESTS
 -----

@@ -23,10 +23,10 @@ Curriculo produces that **path**: an ordered walk through the parts that matter,
 Runs straight from GitHub with no install step (Node.js 18+). To get a short `curriculo` command instead, run `npm i -g github:Darshit42/Curriculo`.
 
 ```bash
-# 1. Set your BharatCode API key (read from the environment only, never written to disk)
-export BHARATCODE_API_KEY=bc_live_...   # from https://bharatcode.ai/account
-# optional: BHARATCODE_MODEL (default qwen-3.8-27b), BHARATCODE_BASE_URL (default https://bharatcode.ai/api/model/v1),
-#           BHARATCODE_REASONING_EFFORT (default low)
+# 1. Save your BharatCode key once (get one at https://bharatcode.ai/account).
+#    It is verified, then stored in ~/.curriculo/config.json — never in a repo.
+npx github:Darshit42/Curriculo login bharatcode
+#    (or skip saving and use an env var: export BHARATCODE_API_KEY=bc_live_...)
 
 # 2. Generate a course for a public repo (shallow-cloned to ~/.curriculo/repos) or a local path
 npx github:Darshit42/Curriculo gen pallets/click
@@ -37,6 +37,30 @@ npx github:Darshit42/Curriculo learn
 ```
 
 No API key? `npx github:Darshit42/Curriculo gen . --offline` builds a heuristic course with zero model calls. Its lessons come from file structure, doc comments and declarations, and its quizzes are checkable facts such as "which file defines `X`?"
+
+## Model providers
+
+BharatCode (`qwen-3.8-27b`) is the default, and the provider every published run in this repo was made with. Curriculo also works with other providers through the same pipeline:
+
+| Provider | `--provider` | Default model | Key (env var or `curriculo login <provider>`) |
+| --- | --- | --- | --- |
+| BharatCode | `bharatcode` | `qwen-3.8-27b` | `BHARATCODE_API_KEY` |
+| Anthropic | `anthropic` | `claude-opus-5-5` | `ANTHROPIC_API_KEY` |
+| OpenAI | `openai` | `gpt-5-mini` | `OPENAI_API_KEY` |
+| Google Gemini | `gemini` | `gemini-2.5-flash` | `GEMINI_API_KEY` |
+| OpenRouter | `openrouter` | `openrouter/auto` | `OPENROUTER_API_KEY` |
+| Groq | `groq` | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
+| Ollama (local) | `ollama` | `llama3.1` | none (`OLLAMA_BASE_URL` to change host) |
+| Any OpenAI-compatible API | `custom` | set `--model` | `CURRICULO_BASE_URL` + `CURRICULO_API_KEY` |
+
+```bash
+npx github:Darshit42/Curriculo login anthropic             # save a key (hidden prompt, verified)
+npx github:Darshit42/Curriculo use anthropic               # make it the default
+npx github:Darshit42/Curriculo gen . --provider openai --model gpt-5   # or pick per run
+npx github:Darshit42/Curriculo providers                   # see what's configured
+```
+
+Precedence: `--provider`/`--model` flags, then `CURRICULO_PROVIDER`/`CURRICULO_MODEL`, then your saved default, then whichever provider has a key in the environment. Default models are starting points — pass `--model` for anything else your account offers.
 
 ## What you get
 
@@ -74,8 +98,12 @@ Files (press the number to open in your editor):
 | `curriculo render [path]` | Re-render `LEARN.md` from the manifest, e.g. after hand edits |
 | `curriculo rank <url-or-path>` | Show which files would be taught, and why |
 | `curriculo badge` | Print the README badge that links to `LEARN.md` |
+| `curriculo login <provider>` | Verify and save an API key locally |
+| `curriculo use <provider>` | Set the default provider (and `--model`) |
+| `curriculo providers` | List providers, saved keys (masked) and the active one |
+| `curriculo logout <provider>` | Remove a saved key |
 
-`gen` options: `--offline`, `--lessons <n>` (8), `--top <n>` teaching-set size (24), `--budget <tokens>` hard cap (250k), `--concurrency <n>` (8), `--out <dir>`, `--no-cache`, `--learn`.
+`gen` options: `--provider <name>`, `--model <id>`, `--offline`, `--lessons <n>` (8), `--top <n>` teaching-set size (24), `--budget <tokens>` hard cap (250k), `--concurrency <n>` (8), `--out <dir>`, `--no-cache`, `--learn`.
 
 ## How it works
 
@@ -115,7 +143,7 @@ Regenerate after a refactor. Unchanged files hit the cache.
 
 - Only the ranked, truncated file excerpts are sent to the model, never the whole working tree.
 - `.gitignore` is respected, and secret-pattern files are never read or transmitted.
-- The API key is read from the environment and is never written to the manifest, cache or `LEARN.md`.
+- API keys come from the environment or `~/.curriculo/config.json` (written by `curriculo login`, owner-only permissions). They are never written to the manifest, cache, `LEARN.md` or the repo.
 - `curriculo learn` works fully offline from the local manifest.
 
 ## Development

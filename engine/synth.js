@@ -4,7 +4,7 @@
  * lesson degrades to a file list without a quiz instead of failing the run.
  */
 import { treeOverview } from './ingest.js';
-import { BudgetError } from './llm.js';
+import { BudgetError, FatalApiError } from './llm.js';
 import { quizError } from './manifest.js';
 import { offlineLessonBody, offlineOutline } from './offline.js';
 import { lessonPrompt, outlinePrompt, quizPrompt, retrySuffix } from './prompts.js';
@@ -96,7 +96,7 @@ export async function synthesizeWithModel({ repoId, ing, ranked, teaching, clien
       (text) => validateOutline(text, known, maxLessons),
     );
   } catch (err) {
-    if (err instanceof BudgetError) throw err;
+    if (err instanceof BudgetError || err instanceof FatalApiError) throw err;
     log(`Outline response unusable (${err.message}); using the heuristic outline`);
     outline = offlineOutline({ ing, teaching, maxLessons });
   }
@@ -116,6 +116,7 @@ export async function synthesizeWithModel({ repoId, ing, ranked, teaching, clien
         (text) => validateBody(text, lesson),
       );
     } catch (err) {
+      if (err instanceof FatalApiError) throw err;
       log(`  lesson ${i + 1} degraded: ${err.message}`);
       body = offlineLessonBody(lesson, byPath, rankByPath);
       degraded = true;
@@ -124,6 +125,7 @@ export async function synthesizeWithModel({ repoId, ing, ranked, teaching, clien
       try {
         quiz = await callValidated(client, quizPrompt({ lesson, body, slices }), validateQuiz);
       } catch (err) {
+        if (err instanceof FatalApiError) throw err;
         log(`  lesson ${i + 1} quiz skipped: ${err.message}`);
       }
     }

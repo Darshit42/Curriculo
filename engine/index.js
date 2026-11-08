@@ -16,7 +16,7 @@ import { synthesizeWithModel } from './synth.js';
 export { ingest, resolveSource, isRemote, isSecretPath, treeOverview } from './ingest.js';
 export { rankFiles, selectTeachingSet } from './rank.js';
 export { extractSymbols, leadingDoc, signalSlice } from './slice.js';
-export { BharatCodeClient, BudgetError, ModelClient, RefusalError } from './llm.js';
+export { BharatCodeClient, BudgetError, FatalApiError, ModelClient, RefusalError } from './llm.js';
 export { PROVIDERS, configPath, loadConfig, maskKey, providerNames, resolveProvider, saveConfig } from './providers.js';
 export * from './manifest.js';
 export { renderLearnMd, badgeMarkdown } from './render.js';

@@ -10,6 +10,24 @@ export class BudgetError extends Error {
   }
 }
 
+/** Auth, plan or model-access errors: retrying or degrading cannot fix these, so stop the run. */
+export class FatalApiError extends Error {
+  constructor(msg, status) {
+    super(msg);
+    this.name = 'FatalApiError';
+    this.status = status;
+  }
+}
+
+function apiErrorMessage(text) {
+  try {
+    const j = JSON.parse(text);
+    return j?.error?.message || j?.message || text;
+  } catch {
+    return text;
+  }
+}
+
 export class RefusalError extends Error {
   constructor(msg) {
     super(msg);
@@ -156,7 +174,12 @@ export class ModelClient {
         continue;
       }
       if (!res.ok) {
-        throw new Error(`${name} API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+        const detail = apiErrorMessage(await res.text()).slice(0, 400);
+        if ([401, 403, 404].includes(res.status)) {
+          const hint = res.status === 401 ? ' Check the key (curriculo login ' + this.p.provider + ').' : res.status === 404 ? ' Check the model id (--model).' : '';
+          throw new FatalApiError(`${name} API ${res.status}: ${detail}${hint}`, res.status);
+        }
+        throw new Error(`${name} API ${res.status}: ${detail}`);
       }
       const data = await res.json();
       const out = parseResponse(this.p, data);

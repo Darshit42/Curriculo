@@ -106,3 +106,16 @@ test('config file: saved with owner-only permissions; keys are masked for displa
   assert.equal(maskKey('bc_live_abcdefghijklmnop'), 'bc_live_…mnop');
   assert.ok(!maskKey('bc_live_abcdefghijklmnop').includes('efghijkl'));
 });
+
+test('auth/plan errors (401/403/404) stop the run instead of degrading lessons', async () => {
+  const { FatalApiError } = await import('../engine/llm.js');
+  const p = resolveProvider({ provider: 'bharatcode', env: { BHARATCODE_API_KEY: 'k' }, config: empty });
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls++;
+    return new Response(JSON.stringify({ error: { message: 'Model requires Pro' } }), { status: 403 });
+  };
+  const client = new ModelClient({ provider: p, fetchImpl, useCache: false });
+  await assert.rejects(client.complete({ system: 's', user: 'u' }), (e) => e instanceof FatalApiError && /403: Model requires Pro/.test(e.message));
+  assert.equal(calls, 1, 'not retried');
+});
