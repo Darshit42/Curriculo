@@ -68,6 +68,12 @@ export function declaredEntries(files) {
     if (/(^|\/)cmd\/[^/]+\/main\.go$/.test(f.path) || f.path === 'main.go') out.add(f.path);
     if (/(^|\/)__main__\.py$/.test(f.path) && f.path.split('/').length <= 3) out.add(f.path);
   }
+  // Python packages: the top-level package __init__ is the public API surface.
+  if (byPath.has('pyproject.toml') || byPath.has('setup.py') || byPath.has('setup.cfg')) {
+    for (const f of files) {
+      if (/^(src\/)?[A-Za-z_]\w*\/__init__\.py$/.test(f.path) && f.lines >= 5) out.add(f.path);
+    }
+  }
   return out;
 }
 
@@ -248,9 +254,19 @@ export function rankFiles(files) {
 }
 
 /** Choose the teaching set: top-N code files, never tests, at least one entry point. */
-export function selectTeachingSet(ranked, { top = 24 } = {}) {
-  const pool = ranked.filter((r) => CODE_EXT.has(r.path.split('.').pop().toLowerCase()) && !r.reasons.includes('test'));
-  const chosen = pool.slice(0, top);
+export function selectTeachingSet(ranked, { top = 24, maxPeripheral = 2 } = {}) {
+  const pool = ranked.filter(
+    (r) =>
+      CODE_EXT.has(r.path.split('.').pop().toLowerCase()) &&
+      !r.reasons.includes('test') &&
+      !/(^|\/)\.[^/]+\//.test(r.path),
+  );
+  const core = pool.filter((r) => !r.reasons.includes('peripheral') && r.score > 0);
+  // A few peripheral files (examples) show the code in use; more would crowd out the core.
+  const peripheral = pool.filter((r) => r.reasons.includes('peripheral') && r.score > 0).slice(0, maxPeripheral);
+  let chosen = [...core.slice(0, top - peripheral.length), ...peripheral];
+  if (chosen.length < 3) chosen = pool.slice(0, Math.min(top, Math.max(3, chosen.length)));
+  chosen.sort((a, b) => b.score - a.score);
   if (!chosen.some((r) => r.entry)) {
     const e = pool.find((r) => r.entry);
     if (e) chosen[chosen.length - 1] = e;

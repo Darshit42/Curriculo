@@ -37,7 +37,7 @@ const DECL_PATTERNS = [
   { re: /^#define\s+([A-Z_][A-Z0-9_]+)/, kind: 'macro' },
 ];
 
-const NOT_NAMES = new Set(['if', 'for', 'while', 'switch', 'return', 'catch', 'else', 'new', 'sizeof', 'main']);
+const NOT_NAMES = new Set(['exports', 'prototype', 'module', 'if', 'for', 'while', 'switch', 'return', 'catch', 'else', 'new', 'sizeof', 'main']);
 
 /** Extract top-level-ish declarations: [{ name, line (1-based), kind }]. */
 export function extractSymbols(content, { limit = 200 } = {}) {

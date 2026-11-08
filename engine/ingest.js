@@ -55,6 +55,7 @@ export function shouldSkip(p) {
   if (parts.slice(0, -1).some((d) => IGNORE_DIRS.has(d))) return true;
   const base = parts[parts.length - 1];
   if (LOCK_FILES.has(base)) return true;
+  if (p === 'LEARN.md') return true; // our own output must not feed the next run
   if (BINARY_EXT.has(fileExt(p))) return true;
   if (/\.min\.(js|css)$|\.map$|\.snap$/i.test(base)) return true;
   if (isSecretPath(p)) return true;
