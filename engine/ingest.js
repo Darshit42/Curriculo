@@ -66,7 +66,8 @@ export function shouldSkip(p) {
 export function isRemote(src) {
   if (/^(https?:\/\/|git@|ssh:\/\/|git:\/\/)/i.test(src)) return true;
   if (/^(github|gitlab|bitbucket)\.(com|org)\//i.test(src)) return true;
-  if (/^[\w.-]+\/[\w.-]+$/.test(src) && !fs.existsSync(src)) return true;
+  // owner/name shorthand; owners never start with '.', so ./dir and ../dir stay local
+  if (/^[A-Za-z0-9][\w-]*\/[\w.-]+$/.test(src) && !fs.existsSync(src)) return true;
   return false;
 }
 

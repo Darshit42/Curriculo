@@ -23,12 +23,36 @@ export function readmeBlurb(keyDocs, maxChars = 500) {
     .split(/\r?\n\s*\r?\n/)
     .map((p) => p.replace(/\s+/g, ' ').trim());
   for (const p of paras) {
-    if (p.length < 60 || /^(#|!\[|<|\[!\[|\||>|-{3,}|={3,})/.test(p)) continue;
+    if (p.length < 60 || /:$/.test(p) || /^(#|!\[|<|\[!\[|\||>|-{3,}|={3,}|[-*+]\s|\d+[.)]\s)/.test(p)) continue;
     const text = p.replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').trim();
     if (text.length < 60) continue;
     return text.length > maxChars ? text.slice(0, maxChars - 1).trimEnd() + '…' : text;
   }
   return '';
+}
+
+/** The one-line description from the root package manifest, as a sentence (or ''). */
+export function projectDescription(files) {
+  const root = new Map(files.filter((f) => !f.path.includes('/')).map((f) => [f.path, f.content]));
+  let name = '';
+  let desc = '';
+  try {
+    if (root.has('package.json')) {
+      const pkg = JSON.parse(root.get('package.json'));
+      [name, desc] = [pkg.name, pkg.description];
+    }
+  } catch {
+    /* ignore malformed package.json */
+  }
+  for (const f of ['pyproject.toml', 'Cargo.toml']) {
+    if (desc || !root.has(f)) continue;
+    const c = root.get(f);
+    desc = c.match(/^description\s*=\s*["']([^"'\n]+)["']/m)?.[1];
+    name = c.match(/^name\s*=\s*["']([^"'\n]+)["']/m)?.[1];
+  }
+  if (typeof desc !== 'string' || desc.trim().length < 10) return '';
+  const d = desc.trim().replace(/\.?$/, '.');
+  return name ? `\`${name}\` — ${d}` : d;
 }
 
 function groupKey(p) {
@@ -80,7 +104,7 @@ export function offlineOutline({ ing, teaching, maxLessons = 8 }) {
     });
   }
   const top = teaching[0]?.path;
-  const blurb = readmeBlurb(ing.keyDocs);
+  const blurb = projectDescription(ing.files) || readmeBlurb(ing.keyDocs);
   const langs = languageMix(ing.files);
   const summary = [
     blurb || `This repository contains ${ing.files.length} text files${langs ? `, mostly ${langs}` : ''}.`,

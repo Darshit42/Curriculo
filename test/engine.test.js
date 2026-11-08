@@ -75,6 +75,19 @@ test('ranking prefers the declared entry and the most-imported module, demotes t
   assert.ok(teaching.includes('src/index.js'));
 });
 
+test('TS ESM imports with .js extensions resolve to .ts files; dist entries map to source', () => {
+  const files = [
+    { path: 'package.json', ext: 'json', lines: 1, content: JSON.stringify({ main: 'distribution/source/index.js' }) },
+    { path: 'source/index.ts', ext: 'ts', lines: 50, content: "import { a } from './core/a.js';\nexport { a };\n" },
+    { path: 'source/core/a.ts', ext: 'ts', lines: 50, content: 'export const a = 1;\n' },
+    { path: 'test-d/a.ts', ext: 'ts', lines: 50, content: "import { a } from '../source/core/a.js';\n" },
+  ];
+  const ranked = Object.fromEntries(rankFiles(files).map((r) => [r.path, r]));
+  assert.ok(ranked['source/index.ts'].entry);
+  assert.ok(ranked['source/core/a.ts'].fanIn >= 1);
+  assert.ok(ranked['test-d/a.ts'].reasons.includes('test'));
+});
+
 test('symbol and doc extraction', () => {
   const syms = extractSymbols("export function a() {}\nclass B {}\ndef c(x):\nfunc (s *S) D() {\nobj.e = function e() {}\n").map((s) => s.name);
   assert.deepEqual(syms, ['a', 'B', 'c', 'D', 'e']);

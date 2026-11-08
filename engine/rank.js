@@ -15,9 +15,9 @@ const ENTRY_NAMES = new Set([
 ]);
 
 const JS_EXTS = ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'mts', 'cts', 'vue', 'svelte'];
-const TEST_RE = /(^|\/)(tests?|__tests__|spec|specs|testing|testdata|test_data|e2e|cypress|playwright)\/|(^|\/)test_[^/]+$|[._-](test|spec)s?\.[a-z]+$|_test\.(go|py|rs)$/i;
+const TEST_RE = /(^|\/)(tests?|test-d|tests?-[a-z]+|__tests__|benches|spec|specs|testing|testdata|test_data|e2e|cypress|playwright)\/|(^|\/)test_[^/]+$|[._-](test|spec)s?\.[a-z]+$|_test\.(go|py|rs)$/i;
 const PERIPHERAL_RE = /(^|\/)(docs?|examples?|samples?|demos?|scripts?|tools?|bench(marks?)?|fixtures?|migrations?|third[_-]?party|generated|gen|stories|storybook|assets|static|public|locales?|i18n|\.github|ci)\//i;
-const CORE_DIR_RE = /(^|\/)(src|lib|core|app|pkg|internal|server|api|engine|kernel|runtime|crates)\//i;
+const CORE_DIR_RE = /(^|\/)(src|source|lib|core|app|pkg|internal|server|api|engine|kernel|runtime|crates)\//i;
 
 /** Entry points declared by package manifests (package.json, Cargo.toml). */
 export function declaredEntries(files) {
@@ -33,8 +33,16 @@ export function declaredEntries(files) {
       }
     }
     // dist/foo.js usually maps to src/foo.ts
-    const src = p.replace(/^(dist|build|lib|out)\//, 'src/').replace(/\.(c|m)?js$/, '');
-    for (const e of JS_EXTS) if (byPath.has(`${src}.${e}`)) return out.add(`${src}.${e}`);
+    // (also distribution/source/foo.js -> source/foo.ts, build/esm/foo.js -> src/foo.ts)
+    const bare = p
+      .replace(/^(dist|distribution|build|lib|out|esm|cjs|umd)\//, '')
+      .replace(/^(esm|cjs|umd|types)\//, '')
+      .replace(/\.(c|m)?js$/, '');
+    for (const prefix of ['src/', 'source/', '']) {
+      const cand = prefix + bare.replace(/^(src|source)\//, '');
+      for (const e of JS_EXTS) if (byPath.has(`${cand}.${e}`)) return out.add(`${cand}.${e}`);
+      for (const e of JS_EXTS) if (byPath.has(`${cand}/index.${e}`)) return out.add(`${cand}/index.${e}`);
+    }
   };
   for (const f of files) {
     const base = f.path.split('/').pop();
@@ -168,7 +176,9 @@ export function computeFanIn(files) {
     for (const { s, relative } of importSpecs(f)) {
       if (relative && typeof s === 'string') {
         const p = path.posix.normalize(path.posix.join(dir, s));
-        const hit = [p, ...JS_EXTS.map((e) => `${p}.${e}`), ...JS_EXTS.map((e) => `${p}/index.${e}`), `${p}.h`, `${p}.rb`]
+        // TS ESM imports name the emitted file: './x.js' resolves to './x.ts' on disk.
+        const tsTwin = /\.(m|c)?jsx?$/.test(p) ? ['ts', 'tsx', 'mts', 'cts'].map((e) => p.replace(/\.(m|c)?jsx?$/, `.${e}`)) : [];
+        const hit = [p, ...tsTwin, ...JS_EXTS.map((e) => `${p}.${e}`), ...JS_EXTS.map((e) => `${p}/index.${e}`), `${p}.h`, `${p}.rb`]
           .find((c) => byPath.has(c));
         if (hit) add([hit]);
         else if (f.ext === 'h' || f.ext.startsWith('c')) add(suffix.get(noExt(s)) || []);
