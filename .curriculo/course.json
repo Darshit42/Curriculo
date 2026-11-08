@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "repo": "github.com/Darshit42/Curriculo",
+  "generatedAt": "2026-11-08T08:54:04Z",
+  "model": "offline-heuristic",
+  "summary": "**Turn any Git repository into a guided, interactive course.** Point it at a repo, and Curriculo reads the code, orders the concepts, and produces a learning path: sequenced lessons tied to real files, quizzes drawn from the actual code, and a `LEARN.md` you can commit. Execution starts in `engine/index.js`, `cli/index.js`. This course walks through 4 lessons, from entry points to the most-imported modules.",
+  "lessons": [
+    {
+      "id": "01-where-execution-starts",
+      "title": "Where execution starts",
+      "order": 1,
+      "files": [
+        "engine/index.js",
+        "cli/index.js"
+      ],
+      "body": "Find the entry points and see what they wire together.\n\n**`engine/index.js`** — 106 lines (declared entry point, imported by ~2 files, core directory). Curriculo engine: a UI-less library shared by the CLI and the Claude skill. ingest -> rank -> synthesize (BharatCode or offline heuristics) -> manifest -> LEARN.md\nKey definitions: `DEFAULTS` (engine/index.js:23), `writeOutputs` (engine/index.js:26), `generateCourse` (engine/index.js:39).\n\n**`cli/index.js`** — 214 lines (declared entry point).\nKey definitions: `paint` (cli/index.js:22), `fail` (cli/index.js:59), `int` (cli/index.js:64), `findCourseRoot` (cli/index.js:71), `cmdGen` (cli/index.js:81), `cmdLearn` (cli/index.js:127).\n\nSuggested reading order: `engine/index.js` → `cli/index.js`.",
+      "quiz": [
+        {
+          "q": "Which file defines `DEFAULTS`?",
+          "choices": [
+            "engine/offline.js",
+            "engine/llm.js",
+            "engine/util.js",
+            "engine/index.js"
+          ],
+          "answer": 3,
+          "why": "`DEFAULTS` is declared in `engine/index.js` at line 23."
+        },
+        {
+          "q": "Which of these files is imported by the most other files in the repo?",
+          "choices": [
+            "cli/index.js",
+            "engine/index.js"
+          ],
+          "answer": 1,
+          "why": "`engine/index.js` is imported by about 2 other file(s), making it the most load-bearing of the set."
+        }
+      ]
+    },
+    {
+      "id": "02-engine-util-js-slice-js-manifest",
+      "title": "`engine/`: `util.js`, `slice.js`, `manifest.js`, `ingest.js`",
+      "order": 2,
+      "files": [
+        "engine/util.js",
+        "engine/slice.js",
+        "engine/manifest.js",
+        "engine/ingest.js"
+      ],
+      "body": "Understand what engine/ is responsible for.\n\n**`engine/util.js`** — 120 lines (imported by ~9 files, core directory).\nKey definitions: `sha` (engine/util.js:6), `estTokens` (engine/util.js:11), `pool` (engine/util.js:16), `readJSON` (engine/util.js:30), `writeJSON` (engine/util.js:38), `toPosix` (engine/util.js:43).\n\n**`engine/slice.js`** — 156 lines (imported by ~3 files, core directory). Signal-region slicing: cut a file down to the parts that teach the most (top of file, declarations, exports) so prompts stay within budget.\nKey definitions: `extractSymbols` (engine/slice.js:43), `commentAt` (engine/slice.js:68), `leadingDoc` (engine/slice.js:103), `signalSlice` (engine/slice.js:129).\n\n**`engine/manifest.js`** — 117 lines (imported by ~3 files, core directory).\nKey definitions: `MANIFEST_VERSION` (engine/manifest.js:4), `STATE_DIR` (engine/manifest.js:5), `manifestPath` (engine/manifest.js:7), `progressPath` (engine/manifest.js:11), `quizError` (engine/manifest.js:19), `normalizeQuiz` (engine/manifest.js:30).\n\n**`engine/ingest.js`** — 247 lines (imported by ~2 files, core directory).\nKey definitions: `IGNORE_DIRS` (engine/ingest.js:8), `MAX_FILE_BYTES` (engine/ingest.js:45), `MAX_FILES` (engine/ingest.js:46), `isSecretPath` (engine/ingest.js:48), `shouldSkip` (engine/ingest.js:53), `isRemote` (engine/ingest.js:66).\n\nSuggested reading order: `util.js` → `slice.js` → `manifest.js` → `ingest.js`.",
+      "quiz": [
+        {
+          "q": "Which file defines `estTokens`?",
+          "choices": [
+            "engine/util.js",
+            "engine/synth.js",
+            "cli/index.js",
+            "engine/index.js"
+          ],
+          "answer": 0,
+          "why": "`estTokens` is declared in `engine/util.js` at line 11."
+        },
+        {
+          "q": "Which of these files is imported by the most other files in the repo?",
+          "choices": [
+            "engine/ingest.js",
+            "engine/util.js",
+            "engine/slice.js",
+            "engine/manifest.js"
+          ],
+          "answer": 1,
+          "why": "`engine/util.js` is imported by about 9 other file(s), making it the most load-bearing of the set."
+        }
+      ]
+    },
+    {
+      "id": "03-engine-offline-js-llm-js-synth-j",
+      "title": "`engine/`: `offline.js`, `llm.js`, `synth.js`, `prompts.js`",
+      "order": 3,
+      "files": [
+        "engine/offline.js",
+        "engine/llm.js",
+        "engine/synth.js",
+        "engine/prompts.js"
+      ],
+      "body": "Understand what engine/ is responsible for.\n\n**`engine/offline.js`** — 196 lines (imported by ~2 files, core directory). Heuristic course generation with no model calls. Used by `--offline`, as the outline fallback when the model's outline is unusable, and as the degraded body for a lesson whose synthesis failed.\nKey definitions: `readmeBlurb` (engine/offline.js:17), `groupKey` (engine/offline.js:34), `chunk` (engine/offline.js:41), `offlineOutline` (engine/offline.js:50), `languageMix` (engine/offline.js:99), `offlineLessonBody` (engine/offline.js:107).\n\n**`engine/llm.js`** — 141 lines (imported by ~2 files, core directory).\nKey definitions: `BudgetError` (engine/llm.js:5), `configFromEnv` (engine/llm.js:16), `missingConfig` (engine/llm.js:24), `sleep` (engine/llm.js:32), `BharatCodeClient` (engine/llm.js:38), `extractText` (engine/llm.js:126).\n\n**`engine/synth.js`** — 136 lines (imported by ~1 file, core directory). Model-backed course synthesis: outline -> lessons (parallel) -> quizzes. Every response is validated; a bad response is retried once, then the lesson degrades to a file list without a quiz instead of failing the run.\nKey definitions: `callValidated` (engine/synth.js:15), `validateOutline` (engine/synth.js:27), `cleanBody` (engine/synth.js:46), `validateBody` (engine/synth.js:56), `validateQuiz` (engine/synth.js:65), `synthesizeWithModel` (engine/synth.js:74).\n\n**`engine/prompts.js`** — 87 lines (imported by ~1 file, core directory). The three-step prompt chain: repo summary + outline, lesson synthesis, quiz generation. Every prompt sees only a ranked, budgeted slice of the repo.\nKey definitions: `outlinePrompt` (engine/prompts.js:11), `lessonPrompt` (engine/prompts.js:41), `quizPrompt` (engine/prompts.js:65), `retrySuffix` (engine/prompts.js:84).\n\nSuggested reading order: `offline.js` → `llm.js` → `synth.js` → `prompts.js`.",
+      "quiz": [
+        {
+          "q": "Which file defines `readmeBlurb`?",
+          "choices": [
+            "cli/index.js",
+            "engine/manifest.js",
+            "engine/offline.js",
+            "engine/ingest.js"
+          ],
+          "answer": 2,
+          "why": "`readmeBlurb` is declared in `engine/offline.js` at line 17."
+        },
+        {
+          "q": "Which of these files is imported by the most other files in the repo?",
+          "choices": [
+            "engine/llm.js",
+            "engine/synth.js",
+            "engine/prompts.js",
+            "engine/offline.js"
+          ],
+          "answer": 3,
+          "why": "`engine/offline.js` is imported by about 2 other file(s), making it the most load-bearing of the set."
+        }
+      ]
+    },
+    {
+      "id": "04-inside-cli",
+      "title": "Inside `cli/`",
+      "order": 4,
+      "files": [
+        "cli/tui.js"
+      ],
+      "body": "Understand what cli/ is responsible for.\n\n**`cli/tui.js`** — 355 lines (imported by ~1 file). Dependency-free terminal UI: lesson list -> lesson view -> quiz, with progress persisted to .curriculo/progress.json so a course can be resumed.\nKey definitions: `stripAnsi` (cli/tui.js:22), `wrap` (cli/tui.js:25), `styleLine` (cli/tui.js:47), `loadProgress` (cli/tui.js:59), `editorCommand` (cli/tui.js:65), `runTUI` (cli/tui.js:75).",
+      "quiz": [
+        {
+          "q": "Which file defines `stripAnsi`?",
+          "choices": [
+            "engine/index.js",
+            "cli/tui.js",
+            "engine/ingest.js",
+            "engine/slice.js"
+          ],
+          "answer": 1,
+          "why": "`stripAnsi` is declared in `cli/tui.js` at line 22."
+        }
+      ]
+    }
+  ],
+  "stats": {
+    "files": 19,
+    "teachingSet": 13,
+    "durationMs": 103,
+    "tokens": {
+      "prompt": 0,
+      "completion": 0,
+      "calls": 0,
+      "cached": 0
+    },
+    "degradedLessons": 0
+  }
+}
