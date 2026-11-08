@@ -1,133 +1,265 @@
 {
   "version": 1,
   "repo": "github.com/Darshit42/Curriculo",
-  "generatedAt": "2026-11-08T10:57:48Z",
-  "model": "offline-heuristic",
-  "summary": "`curriculo` — Turn any Git repository into a guided, interactive course with code-grounded quizzes and a committable LEARN.md. Execution starts in `engine/index.js`, `cli/index.js`. This course walks through 4 lessons, from entry points to the most-imported modules.",
+  "generatedAt": "2026-11-08T11:51:58Z",
+  "model": "qwen-3.8-27b",
+  "summary": "Curriculo is a dependency-free Node.js tool that turns any Git repository into a guided, interactive course: it ingests source files, ranks and slices them into teaching material, synthesizes lessons via the BharatCode API or offline heuristics, and emits a `.curriculo/course.json` manifest plus a commit-friendly `LEARN.md`. The code splits into two layers: `engine/` is a UI-less library exposing the whole pipeline, and `cli/` is a thin command-line shell (with an interactive TUI) built on top of it. Execution starts at `cli/index.js`, which parses args and calls `generateCourse` / `writeOutputs` from the engine entry point `engine/index.js`. Read the CLI first to see how the commands are wired, then `engine/index.js` for the ingest -> rank -> synthesize -> manifest -> render flow, and from there dive into whichever stage you need.",
   "lessons": [
     {
-      "id": "01-where-execution-starts",
-      "title": "Where execution starts",
+      "id": "01-cli-entry-and-command-wiring",
+      "title": "CLI entry and command wiring",
       "order": 1,
       "files": [
-        "engine/index.js",
         "cli/index.js"
       ],
-      "body": "Find the entry points and see what they wire together.\n\n**`engine/index.js`** — 106 lines (declared entry point, imported by ~2 files, core directory). Curriculo engine: a UI-less library shared by the CLI and the Claude skill. ingest -> rank -> synthesize (BharatCode or offline heuristics) -> manifest -> LEARN.md\nKey definitions: `DEFAULTS` (engine/index.js:23), `writeOutputs` (engine/index.js:26), `generateCourse` (engine/index.js:39).\n\n**`cli/index.js`** — 214 lines (declared entry point).\nKey definitions: `paint` (cli/index.js:22), `fail` (cli/index.js:59), `int` (cli/index.js:64), `findCourseRoot` (cli/index.js:71), `cmdGen` (cli/index.js:81), `cmdLearn` (cli/index.js:127).\n\nSuggested reading order: `engine/index.js` → `cli/index.js`.",
+      "body": "`cli/index.js` is the single entry point for the entire tool. It is a shebang'd ES module (line 1) that does three things: parses command-line arguments, dispatches to a command handler, and formats output. It contains no business logic — every substantive operation is delegated to the engine.\n\n### Imports and the engine boundary\n\nLines 6–16 import the engine's public surface from `../engine/index.js`: `generateCourse`, `ingest`, `rankFiles`, `resolveSource`, `loadCourse`, `writeOutputs`, `manifestPath`, `badgeMarkdown`, and `DEFAULTS`. Two more helpers come from `../engine/util.js` (line 17), and the TUI lives in `./tui.js` (line 18). This import list is effectively the engine's API contract — if you want to know what the engine exposes, this is the quickest map.\n\n### Argument parsing and dispatch\n\n`main()` at line 171 uses Node's built-in `parseArgs` (from `node:util`, line 4) with `allowPositionals: true`. The first positional is the subcommand; the rest are passed through as `args`. Numeric options like `--lessons` and `--top` are declared as `type: 'string'` (lines 178–181) and validated later by the `int()` helper at line 64, which calls `fail()` if the value isn't a positive integer. The switch at line 196 routes to five handlers:\n\n| Command | Handler | What it calls in the engine |\n|---------|---------|-----------------------------|\n| `gen` / `generate` | `cmdGen` (line 81) | `generateCourse` |\n| `learn` | `cmdLearn` (line 127) | `loadCourse`, then `runTUI` or `printCourse` |\n| `render` | `cmdRender` (line 143) | `loadCourse` + `writeOutputs` |\n| `rank` | `cmdRank` (line 156) | `resolveSource` + `ingest` + `rankFiles` |\n| `badge` | inline (line 207) | `badgeMarkdown` |\n\n### Course root resolution\n\n`findCourseRoot(start)` at line 71 walks **up** the directory tree from the given path, checking each level for a file at `manifestPath(dir)`. This means `curriculo learn` works from any subdirectory of a repo that already has a `.curriculo/course.json`. If no manifest is found, it returns `null` and the caller prints an error.\n\n### The `--learn` chain\n\nA subtle wiring detail: `cmdGen` at line 124 checks `opts.learn` and, if true, immediately calls `cmdLearn([result.root])`. So `curriculo gen . --learn` generates the course and then drops you into the TUI in one invocation, without a second command.\n\n**Watch out:** `findCourseRoot` uses `manifestPath(dir)` (imported from the engine) to detect a course directory, but it does *not* validate that the manifest is well-formed. A corrupt or partial `course.json` will pass the existence check and only fail later inside `loadCourse`, producing a less obvious error message than \"No course found.\"",
       "quiz": [
         {
-          "q": "Which file defines `DEFAULTS`?",
+          "q": "A user runs `curriculo rank some-repo --top 5`. Which engine functions does `cmdRank` in `cli/index.js` call to produce its output?",
           "choices": [
-            "engine/offline.js",
-            "engine/llm.js",
-            "engine/util.js",
-            "engine/index.js"
-          ],
-          "answer": 3,
-          "why": "`DEFAULTS` is declared in `engine/index.js` at line 23."
-        },
-        {
-          "q": "Which of these files is imported by the most other files in the repo?",
-          "choices": [
-            "cli/index.js",
-            "engine/index.js"
-          ],
-          "answer": 1,
-          "why": "`engine/index.js` is imported by about 2 other file(s), making it the most load-bearing of the set."
-        }
-      ]
-    },
-    {
-      "id": "02-engine-util-js-slice-js-manifest",
-      "title": "`engine/`: `util.js`, `slice.js`, `manifest.js`, `ingest.js`",
-      "order": 2,
-      "files": [
-        "engine/util.js",
-        "engine/slice.js",
-        "engine/manifest.js",
-        "engine/ingest.js"
-      ],
-      "body": "Understand what engine/ is responsible for.\n\n**`engine/util.js`** — 120 lines (imported by ~9 files, core directory).\nKey definitions: `sha` (engine/util.js:6), `estTokens` (engine/util.js:11), `pool` (engine/util.js:16), `readJSON` (engine/util.js:30), `writeJSON` (engine/util.js:38), `toPosix` (engine/util.js:43).\n\n**`engine/slice.js`** — 156 lines (imported by ~3 files, core directory). Signal-region slicing: cut a file down to the parts that teach the most (top of file, declarations, exports) so prompts stay within budget.\nKey definitions: `extractSymbols` (engine/slice.js:43), `commentAt` (engine/slice.js:68), `leadingDoc` (engine/slice.js:103), `signalSlice` (engine/slice.js:129).\n\n**`engine/manifest.js`** — 117 lines (imported by ~3 files, core directory).\nKey definitions: `MANIFEST_VERSION` (engine/manifest.js:4), `STATE_DIR` (engine/manifest.js:5), `manifestPath` (engine/manifest.js:7), `progressPath` (engine/manifest.js:11), `quizError` (engine/manifest.js:19), `normalizeQuiz` (engine/manifest.js:30).\n\n**`engine/ingest.js`** — 248 lines (imported by ~2 files, core directory).\nKey definitions: `IGNORE_DIRS` (engine/ingest.js:8), `MAX_FILE_BYTES` (engine/ingest.js:45), `MAX_FILES` (engine/ingest.js:46), `isSecretPath` (engine/ingest.js:48), `shouldSkip` (engine/ingest.js:53), `isRemote` (engine/ingest.js:66).\n\nSuggested reading order: `util.js` → `slice.js` → `manifest.js` → `ingest.js`.",
-      "quiz": [
-        {
-          "q": "Which file defines `estTokens`?",
-          "choices": [
-            "engine/util.js",
-            "engine/synth.js",
-            "cli/index.js",
-            "engine/index.js"
-          ],
-          "answer": 0,
-          "why": "`estTokens` is declared in `engine/util.js` at line 11."
-        },
-        {
-          "q": "Which of these files is imported by the most other files in the repo?",
-          "choices": [
-            "engine/ingest.js",
-            "engine/util.js",
-            "engine/slice.js",
-            "engine/manifest.js"
-          ],
-          "answer": 1,
-          "why": "`engine/util.js` is imported by about 9 other file(s), making it the most load-bearing of the set."
-        }
-      ]
-    },
-    {
-      "id": "03-engine-offline-js-llm-js-synth-j",
-      "title": "`engine/`: `offline.js`, `llm.js`, `synth.js`, `prompts.js`",
-      "order": 3,
-      "files": [
-        "engine/offline.js",
-        "engine/llm.js",
-        "engine/synth.js",
-        "engine/prompts.js"
-      ],
-      "body": "Understand what engine/ is responsible for.\n\n**`engine/offline.js`** — 220 lines (imported by ~2 files, core directory). Heuristic course generation with no model calls. Used by `--offline`, as the outline fallback when the model's outline is unusable, and as the degraded body for a lesson whose synthesis failed.\nKey definitions: `readmeBlurb` (engine/offline.js:17), `projectDescription` (engine/offline.js:35), `groupKey` (engine/offline.js:58), `chunk` (engine/offline.js:65), `offlineOutline` (engine/offline.js:74), `languageMix` (engine/offline.js:123).\n\n**`engine/llm.js`** — 141 lines (imported by ~2 files, core directory).\nKey definitions: `BudgetError` (engine/llm.js:5), `configFromEnv` (engine/llm.js:16), `missingConfig` (engine/llm.js:24), `sleep` (engine/llm.js:32), `BharatCodeClient` (engine/llm.js:38), `extractText` (engine/llm.js:126).\n\n**`engine/synth.js`** — 136 lines (imported by ~1 file, core directory). Model-backed course synthesis: outline -> lessons (parallel) -> quizzes. Every response is validated; a bad response is retried once, then the lesson degrades to a file list without a quiz instead of failing the run.\nKey definitions: `callValidated` (engine/synth.js:15), `validateOutline` (engine/synth.js:27), `cleanBody` (engine/synth.js:46), `validateBody` (engine/synth.js:56), `validateQuiz` (engine/synth.js:65), `synthesizeWithModel` (engine/synth.js:74).\n\n**`engine/prompts.js`** — 87 lines (imported by ~1 file, core directory). The three-step prompt chain: repo summary + outline, lesson synthesis, quiz generation. Every prompt sees only a ranked, budgeted slice of the repo.\nKey definitions: `outlinePrompt` (engine/prompts.js:11), `lessonPrompt` (engine/prompts.js:41), `quizPrompt` (engine/prompts.js:65), `retrySuffix` (engine/prompts.js:84).\n\nSuggested reading order: `offline.js` → `llm.js` → `synth.js` → `prompts.js`.",
-      "quiz": [
-        {
-          "q": "Which file defines `readmeBlurb`?",
-          "choices": [
-            "cli/index.js",
-            "engine/manifest.js",
-            "engine/offline.js",
-            "engine/ingest.js"
+            "loadCourse, then badgeMarkdown",
+            "generateCourse, then writeOutputs",
+            "resolveSource, then ingest, then rankFiles",
+            "resolveSource, then loadCourse, then runTUI"
           ],
           "answer": 2,
-          "why": "`readmeBlurb` is declared in `engine/offline.js` at line 17."
+          "why": "`cmdRank` at cli/index.js:156–164 calls `resolveSource(...)`, then `ingest(src.root)`, then `rankFiles(ing.files).slice(0, ...)`."
         },
         {
-          "q": "Which of these files is imported by the most other files in the repo?",
+          "q": "`curriculo gen . --learn` is invoked. What happens after the course summary is printed?",
           "choices": [
-            "engine/llm.js",
-            "engine/synth.js",
-            "engine/prompts.js",
-            "engine/offline.js"
+            "`cmdGen` immediately calls `cmdLearn([result.root])`, entering the TUI in the same run",
+            "The process exits and tells the user to run `curriculo learn` as a separate command",
+            "`main()` re-dispatches because `--learn` is a subcommand in the switch at line 196",
+            "`findCourseRoot` is invoked first and fails if no manifest exists yet"
           ],
-          "answer": 3,
-          "why": "`engine/offline.js` is imported by about 2 other file(s), making it the most load-bearing of the set."
+          "answer": 0,
+          "why": "cli/index.js:124 shows `if (opts.learn) await cmdLearn([result.root]);` as the last statement of `cmdGen`, so generation and learning happen in one invocation."
         }
       ]
     },
     {
-      "id": "04-inside-cli",
-      "title": "Inside `cli/`",
+      "id": "02-engine-pipeline-orchestration",
+      "title": "Engine pipeline orchestration",
+      "order": 2,
+      "files": [
+        "engine/index.js"
+      ],
+      "body": "`engine/index.js` is the whole pipeline in one screen: the file-level comment at the top states the order — ingest → rank → synthesize → manifest → LEARN.md — and the body of `generateCourse()` (line 39) executes exactly that sequence.\n\n**The exported surface.** Lines 15–21 are re-exports that define what the CLI and anything else may depend on: `ingest`/`resolveSource` from `./ingest.js`, `rankFiles`/`selectTeachingSet` from `./rank.js`, slicing helpers from `./slice.js`, the model client from `./llm.js`, everything from `./manifest.js` via `export *`, plus `renderLearnMd`, `offlineCourse`, and `badgeMarkdown`. Line 23 fixes the defaults that govern a run: `DEFAULTS = { maxLessons: 8, top: 24, budget: 250_000, concurrency: 8 }`. If a CLI flag isn't passed, one of these four numbers decides the behavior.\n\n**The pipeline.** `generateCourse()` first decides model vs. offline (lines 54–66): unless `offline` is set, it calls `configFromEnv(env)` and `missingConfig(cfg)`, throwing an `NO_CONFIG` error listing exactly which variables are absent. Then it resolves the source (`resolveSource`, line 68), ingests files (`ingest`, line 70 — throwing if none are readable), ranks them (`rankFiles`, line 72), and trims to the teaching set (`selectTeachingSet(ranked, { top })`, line 73).\n\nSynthesis forks at line 77: `offlineCourse({ ing, ranked, teaching, maxLessons })` for heuristics, or a real `BharatCodeClient` constructed with a cache dir under `<root>/<STATE_DIR>/cache`, the token `budget`, `useCache`, and a swappable `fetchImpl` (lines 80–86), feeding `synthesizeWithModel` (line 87). Lesson 6 covers that client; lesson 7 covers the fork.\n\n**Stats, validation, output.** Lines 90–98 assemble `stats` — file counts, duration, token usage (zeroed when offline), and `degradedLessons`. `buildCourse` (line 99) assembles the manifest object, `validateCourse` (line 100) checks every referenced path against the ingested file set, and any failure throws before anything is written. Finally `writeOutputs(root, course)` (line 26) saves the manifest, renders `LEARN.md` via `renderLearnMd`, and drops a `.gitignore` into the state dir so `cache/`, `progress.json`, and `context.json` never reach a commit.\n\nRead the file top-down: imports → re-exports → `DEFAULTS` → `writeOutputs` → `generateCourse`.\n\n**Watch out:** in the online path, `client` is first a bare `{ cfg }` holder (line 65) and only becomes a real `BharatCodeClient` at line 80 — so if you reorder those blocks, `client.cfg` will be undefined.",
+      "quiz": [
+        {
+          "q": "In `generateCourse`, when `offline` is false and `missingConfig(cfg)` returns a non-empty array, what happens?",
+          "choices": [
+            "It retries `configFromEnv` with `process.env` as a second attempt.",
+            "It falls back to `offlineCourse` and logs a warning.",
+            "It substitutes `DEFAULTS.budget` and proceeds with the model path.",
+            "It throws an error with `e.code = 'NO_CONFIG'` listing the missing variable names."
+          ],
+          "answer": 3,
+          "why": "Lines 59–62 of engine/index.js show that a non-empty `missing` array triggers `throw e` where `e.code = 'NO_CONFIG'` and the message joins the missing names."
+        },
+        {
+          "q": "What does `writeOutputs` write into the state directory (`STATE_DIR`)?",
+          "choices": [
+            "A `context.json` holding the ranked file list for future runs.",
+            "A `manifest.json` containing the full course object.",
+            "A `.gitignore` listing `cache/`, `progress.json`, and `context.json`.",
+            "A `progress.json` tracking which lessons the user has completed."
+          ],
+          "answer": 2,
+          "why": "Line 31 of engine/index.js writes the string `'cache/\\nprogress.json\\ncontext.json\\n'` to `path.join(root, STATE_DIR, '.gitignore')`."
+        }
+      ]
+    },
+    {
+      "id": "03-shared-utilities",
+      "title": "Shared utilities",
+      "order": 3,
+      "files": [
+        "engine/util.js"
+      ],
+      "body": "`engine/util.js` is the only module in the repo that imports exclusively from Node built-ins (`node:crypto`, `node:fs`, `node:path`). Every other file in `engine/` and `cli/` can depend on it, but it depends on nothing else in the project. That makes it the safest place to start when you need to understand a helper without pulling in pipeline context.\n\n### What's inside\n\nThe file exports thirteen small functions, each solving one narrow problem:\n\n| Function | Line | Purpose |\n|----------|------|---------|\n| `sha()` | 6 | SHA-256 hex digest; used to fingerprint file content so the ingest stage can skip unchanged files. |\n| `estTokens()` | 11 | Rough token count (~4 chars/token) for budgeting before a model call. |\n| `pool()` | 16 | Concurrency-limited async map that preserves input order. The synthesis stage uses it to fan out multiple API calls without exceeding a rate limit. |\n| `readJSON()` / `writeJSON()` | 30 / 38 | Safe JSON I/O. `writeJSON` creates parent directories; `readJSON` returns a fallback on any error. These are the workhorses behind the `.curriculo/course.json` manifest. |\n| `toPosix()` | 43 | Normalizes path separators to `/` so the manifest is identical on Windows and POSIX. |\n| `slugify()` | 47 | Converts arbitrary strings to URL-safe slugs (max 40 chars). Used for lesson IDs and output filenames. |\n| `seededRandom()` / `shuffle()` | 57 / 69 | Deterministic PRNG (mulberry32) and Fisher-Yates shuffle. The ranking stage uses these so that the same input always produces the same lesson order. |\n| `parseJSONLoose()` | 80 | Extracts the first JSON object from raw model text, tolerating markdown fences and surrounding prose. Critical for the model synthesis path. |\n| `formatDuration()` | 102 | Human-readable elapsed time for CLI progress output. |\n| `fileExt()` / `fileStem()` | 109 / 115 | Split a path into extension and stem. The ingest stage uses `fileExt` to classify files by language. |\n\n### How to read it\n\nTop to bottom is fine — there are no internal dependencies between the functions except `shuffle` calling `seededRandom`, which calls `sha`. If you want to see a function in action, jump to the stage that uses it: `pool` and `parseJSONLoose` appear in the synthesis path (lesson 7), `readJSON`/`writeJSON` in the manifest stage (lesson 4), and `sha` in ingest (lesson 5).\n\n**Watch out:** `readJSON` at `engine/util.js:30` catches *all* exceptions, not just `JSON.parse` failures. A permission error, a missing file, or a disk error all silently return the fallback value. If you add a new call site and the file is unexpectedly absent, you'll get `null` with no warning — check the return value explicitly rather than assuming the file exists.",
+      "quiz": [
+        {
+          "q": "A manifest file at `.curriculo/course.json` is missing when `readJSON()` is called with no second argument. What does the caller receive?",
+          "choices": [
+            "`null`, because `readJSON` catches every exception and returns the default fallback",
+            "An object with an `error` property describing the missing file",
+            "A thrown `ENOENT` error the caller must catch",
+            "`undefined`, because the function returns nothing on failure"
+          ],
+          "answer": 0,
+          "why": "`engine/util.js:30-36` shows `readJSON(file, fallback = null)` wrapping both `readFileSync` and `JSON.parse` in a bare `catch` that returns `fallback`, so a missing file silently yields `null`."
+        },
+        {
+          "q": "The synthesis stage needs to fan out several API calls with bounded concurrency and then parse a JSON object out of the model's markdown-fenced reply. Which pair of helpers in `engine/util.js` does it use?",
+          "choices": [
+            "`pool()` and `formatDuration()`",
+            "`shuffle()` and `readJSON()`",
+            "`estTokens()` and `fileExt()`",
+            "`pool()` and `parseJSONLoose()`"
+          ],
+          "answer": 3,
+          "why": "`engine/util.js:16` defines `pool` as a concurrency-limited async map preserving order, and `engine/util.js:80` defines `parseJSONLoose`, which strips ``` fences before parsing."
+        }
+      ]
+    },
+    {
+      "id": "04-manifest-as-source-of-truth",
+      "title": "Manifest as source of truth",
       "order": 4,
+      "files": [
+        "engine/manifest.js",
+        "engine/render.js"
+      ],
+      "body": "### What the manifest is and where it lives\n\n`engine/manifest.js` is the single source of truth for all course data. It defines the on-disk layout, the validation rules, and the canonical shape of the course object that every other stage reads or writes.\n\nTwo constants anchor the file: `MANIFEST_VERSION = 1` (line 4) and `STATE_DIR = '.curriculo'` (line 5). All state files live under `.curriculo/` in the target repo. `manifestPath(root)` (line 7) resolves to `.curriculo/course.json`; `progressPath(root)` (line 11) resolves to `.curriculo/progress.json`. The latter is consumed by the TUI (lesson 8) to track which lessons a learner has completed.\n\n### Building and validating\n\n`buildCourse()` (line 82) assembles the manifest in a fixed field order: `version`, `repo`, `generatedAt`, `model`, `summary`, `lessons`, and optionally `stats`. Each lesson gets an `id` generated by `lessonId()` (line 77), which produces a zero-padded, slugified string like `01-cli-entry-and-command-wiring`. The `degraded` flag is only included when explicitly `true` (line 96), keeping the JSON clean for the common case.\n\nValidation is layered. `quizError()` (line 19) checks a single question's shape. `lessonErrors()` (line 40) checks a lesson's title, files, body, and quiz array, and—when a `knownFiles` set is provided—verifies every referenced file actually exists in the repo. `validateCourse()` (line 57) orchestrates both, also enforcing unique lesson IDs and required top-level fields.\n\n`loadCourse(root)` (line 102) reads the JSON from disk and calls `validateCourse` without a `knownFiles` set. If validation fails it throws an `Error` whose `.errors` property carries the full list. `saveCourse(root, course)` (line 114) is a thin wrapper around `writeJSON`.\n\n### Rendering to LEARN.md\n\n`engine/render.js` is a pure presentation layer. `renderLearnMd(course)` (line 13) takes a validated course object and returns a single Markdown string. It emits an orientation section from `course.summary`, a course map with anchor links, then each lesson with its file links, body, and a collapsible quiz block using `<details>` elements. File paths are turned into relative Markdown links via `fileLink()` (line 5), which URL-encodes each path segment.\n\n`badgeMarkdown()` (line 73) returns a Shields.io badge string a maintainer can paste into their README.\n\n### How it connects\n\nThe engine pipeline (lesson 2) calls `buildCourse` after synthesis, then `saveCourse` to persist. The CLI's `learn` command (lesson 1) calls `loadCourse` to hydrate the TUI. `renderLearnMd` is called by the CLI's `gen` command to produce the `LEARN.md` file that gets committed alongside the repo.\n\n**Watch out:** `loadCourse` does not pass `knownFiles` to `validateCourse`, so a stale manifest that references files deleted in a later commit will load without error. File-existence checks only happen during generation, not at load time.",
+      "quiz": [
+        {
+          "q": "A repo is refactored so that a file named in the saved manifest is deleted, then a learner runs the `learn` command. What happens?",
+          "choices": [
+            "buildCourse regenerates the lesson with an empty files array to keep validation passing",
+            "The manifest loads successfully, because loadCourse calls validateCourse without a knownFiles set",
+            "loadCourse throws an Error listing \"references unknown file\", because lessonErrors always checks the disk",
+            "renderLearnMd drops the lesson, because it filters out dead file links before returning"
+          ],
+          "answer": 1,
+          "why": "engine/manifest.js loadCourse (line 105) calls validateCourse(course) with no knownFiles option, and the file-existence branch in lessonErrors (line 44) only runs when knownFiles is truthy."
+        }
+      ]
+    },
+    {
+      "id": "05-ingesting-and-selecting-files",
+      "title": "Ingesting and selecting files",
+      "order": 5,
+      "files": [
+        "engine/ingest.js",
+        "engine/rank.js",
+        "engine/slice.js"
+      ],
+      "body": "### The three stages: candidate discovery, ranking, slicing\n\nRead the three files in this order — `engine/ingest.js`, then `engine/rank.js`, then `engine/slice.js` — because each hands its output to the next: a list of candidate files, then a ranked/pruned teaching set, then per-file signal slices that keep prompts within budget.\n\n**Ingesting.** `engine/ingest.js` decides what a file even is. `resolveSource()` (`engine/ingest.js:106`) handles both shapes of input: `isRemote()` (`:66`) detects `https://`, `git@`, `ssh://`, and `git://` URLs, and remotes are normalized by `normalizeRemote()` (`:75`) and cloned into a home directory (`reposHome()`, `:96`, honoring `CURRICULO_HOME`). Locally, `ingest()` (`:190`) lists files with `gitListFiles()` (`:146`) and falls back to `walkFiles()` (`:157`). Filtering is layered: `IGNORE_DIRS` (`:8`) and `shouldSkip()` (`:53`) drop build/vendored directories, `BINARY_EXT` (`:15`) plus `looksBinary()` (`:180`) drop non-text, `LOCK_FILES` (`:23`) drop lockfiles, and — critically — `isSecretPath()` (`:48`) blocks `SECRET_PATTERNS` (`:30`) so credential-like paths are never read or sent to a model. Two hard caps govern volume: `MAX_FILE_BYTES = 300 * 1024` and `MAX_FILES = 6000` (`:45–46`).\n\n**Ranking.** `engine/rank.js` turns that candidate list into teaching order. `CODE_EXT` (`engine/rank.js:5`) separates source from config/docs; `ENTRY_NAMES` (`:12`) and `declaredEntries()` (`:23`) surface package-declared entry points; `TEST_RE` (`:18`), `PERIPHERAL_RE` (`:19`), and `CORE_DIR_RE` (`:20`) classify tests, examples, and core directories. `computeFanIn()` (`:159`) counts importers as a centrality signal. `rankFiles()` (`:218`) composes these into a score, and `selectTeachingSet()` (`:267`) prunes to `top = 24` files with at most `maxPeripheral = 2` — this is the teaching set that reaches the manifest described in lesson 4.\n\n**Slicing.** `engine/slice.js` works per selected file. `extractSymbols()` (`engine/slice.js:43`) applies `DECL_PATTERNS` (`:6`) — regexes for JS/TS, Python, Go, Rust, Java/Kotlin and more — to find declarations. `leadingDoc()` (`:103`) captures the doc comment via `commentAt()` (`:68`), and `signalSlice()` (`:129`) assembles the top of file plus declarations, capped at `maxChars = 3000` and `headLines = 30`, so synthesis prompts stay small.\n\n**Watch out:** `gitListFiles()` only sees tracked files — in a non-Git directory the `walkFiles()` fallback runs instead, so untracked-but-present files can silently change the candidate set depending on whether the repo has a `.git`.",
+      "quiz": [
+        {
+          "q": "What happens when `ingest()` is called on a directory that has no `.git` folder?",
+          "choices": [
+            "It throws an error because `gitListFiles()` cannot execute",
+            "It invokes `gitListFiles()` with a `--no-index` flag to scan untracked files",
+            "It falls back to `walkFiles()` to enumerate files recursively",
+            "It skips the directory entirely since no Git metadata is available"
+          ],
+          "answer": 2,
+          "why": "engine/ingest.js:191 shows `const listed = gitListFiles(root) ?? walkFiles(root);`, so when `gitListFiles()` returns null (no .git), the nullish coalescing operator triggers the `walkFiles()` fallback."
+        },
+        {
+          "q": "What are the default limits applied by `selectTeachingSet()` when pruning the ranked file list?",
+          "choices": [
+            "30 files total with at most 3 peripheral files",
+            "6000 files total with at most 24 peripheral files",
+            "24 files total with at most 2 peripheral files",
+            "24 files total with no cap on peripheral files"
+          ],
+          "answer": 2,
+          "why": "engine/rank.js:267 declares the signature `selectTeachingSet(ranked, { top = 24, maxPeripheral = 2 } = {})`, making 24 and 2 the defaults."
+        }
+      ]
+    },
+    {
+      "id": "06-model-client-and-prompts",
+      "title": "Model client and prompts",
+      "order": 6,
+      "files": [
+        "engine/llm.js",
+        "engine/prompts.js"
+      ],
+      "body": "### What these two files do\n\n`engine/llm.js` is the only place that talks to the BharatCode API. It handles configuration, caching, budgets, retries, and cache invalidation. `engine/prompts.js` is its counterpart: pure functions that build the three prompt templates the pipeline sends. Together they sit at step 3 of the flow you traced in `engine/index.js` — after ingest and rank (lesson 5), before manifest and render (lessons 4 and 8).\n\n### Configuration comes from the environment\n\n`configFromEnv()` at `engine/llm.js:19` reads `BHARATCODE_API_KEY`, `BHARATCODE_BASE_URL`, `BHARATCODE_MODEL`, and `BHARATCODE_REASONING_EFFORT`, falling back to `DEFAULT_BASE_URL` and `DEFAULT_MODEL` at `engine/llm.js:16-17`. Note the `.replace(/\\/+$/, '')` on the base URL — trailing slashes are stripped so request paths concatenate cleanly. `missingConfig()` (`engine/llm.js:29`) reports what's absent, and the comment at `engine/llm.js:13-14` states the invariant that the API key is never written to the manifest, cache, or `LEARN.md`.\n\n### The client's guard rails\n\n`BharatCodeClient` (`engine/llm.js:43`) takes a `budget` (default 250,000 tokens), a `cacheDir`, `useCache`, `timeoutMs`, and an injectable `fetchImpl` for testability. When the budget is exhausted the client throws `BudgetError` (`engine/llm.js:5`) instead of silently over-spending. Responses are cached under `cacheDir/responses` and `clearCache()` (`engine/llm.js:156`) wipes them with `force: true`, which is what makes offline regeneration cheap. `extractText()` (`engine/llm.js:144`) digs `data.choices[0]` out of the response shape.\n\n### The three prompts\n\n`engine/prompts.js` exports a shared `SYSTEM` prompt (`engine/prompts.js:6`) plus three builders, each returning `{ system, user, maxTokens }`:\n\n- `outlinePrompt()` (`engine/prompts.js:11`) — repo tree, ranked files, docs, entry slices in; a JSON `{summary, lessons}` out, capped at 3000 tokens. It constrains lessons to the ranked list, which is why ranking (lesson 5) matters.\n- `lessonPrompt()` (`engine/prompts.js:41`) — the course outline plus line-numbered slices in; 250–450 words of Markdown out, max 2000 tokens, ending in a \"**Watch out:**\" line.\n- `quizPrompt()` (`engine/prompts.js:65`) — lesson body plus slices in; two JSON multiple-choice questions out, max 1200 tokens.\n\n`retrySuffix()` (`engine/prompts.js:84`) appends rejection feedback when a response violates the JSON contract.\n\nRead `engine/prompts.js` first to see what data each stage demands, then `engine/llm.js` for how those requests are paid for and cached.\n\n**Watch out:** reasoning tokens count against `max_tokens` (comment at `engine/llm.js:24`), so raising `BHARATCODE_REASONING_EFFORT` silently eats into the lesson/quiz budgets — and every prompt says \"JSON only,\" so a prose answer is rejected and re-sent with `retrySuffix()`.",
+      "quiz": [
+        {
+          "q": "What does BharatCodeClient do when its token budget is exhausted?",
+          "choices": [
+            "It throws a BudgetError",
+            "It writes a warning entry to the manifest and continues",
+            "It silently truncates the response to fit within the remaining budget",
+            "It retries the request with a reduced max_tokens value"
+          ],
+          "answer": 0,
+          "why": "engine/llm.js:5 defines BudgetError and the client throws it rather than silently over-spending."
+        },
+        {
+          "q": "What is the purpose of retrySuffix() in engine/prompts.js?",
+          "choices": [
+            "It replaces the system prompt with a stricter version",
+            "It increments the token budget to allow a longer retry",
+            "It appends rejection feedback to the prompt when a response violates the JSON contract",
+            "It clears the response cache so the next request starts fresh"
+          ],
+          "answer": 2,
+          "why": "engine/prompts.js:84-86 returns a string that tells the model its previous response was rejected and to follow the required format exactly."
+        }
+      ]
+    },
+    {
+      "id": "07-synthesis-paths-model-vs-offline",
+      "title": "Synthesis paths, model vs offline",
+      "order": 7,
+      "files": [
+        "engine/synth.js",
+        "engine/offline.js"
+      ],
+      "body": "### Two ways to fill a lesson\n\n`engine/synth.js` and `engine/offline.js` are the two ends of a spectrum: paid model calls versus zero-token heuristics. Both produce the same artifacts — an outline, lesson bodies, and quizzes — so the rest of the pipeline (manifest, `LEARN.md`) never needs to know which one ran.\n\n### The model path\n\n`engine/synth.js` is the LLM-driven path. Its header comment states the contract: outline → lessons (run in parallel) → quizzes, with every response validated and retried once before degrading. That retry loop lives in `callValidated()` at `engine/synth.js:15`, which appends `retrySuffix(error)` to the prompt on the second attempt and throws if validation fails again.\n\nValidation itself is exported and layered: `validateOutline()` at `engine/synth.js:27` requires valid JSON via `parseJSONLoose` and a `summary` of at least 40 characters; `validateBody()` at `engine/synth.js:56` cleans the text through `cleanBody()` (line 46) against the lesson title; `validateQuiz()` at `engine/synth.js:65` checks quiz JSON. The entry point `synthesizeWithModel()` (line 75) takes `repoId`, `ing`, `ranked`, `teaching`, `client`, and knobs like `maxLessons`, `concurrency = 4`, and `log` — the same ingest/rank/select outputs you met in lesson 5.\n\n### The offline path\n\n`engine/offline.js` makes no model calls at all. Its comment names three uses: the `--offline` flag, an outline fallback when the model's outline is unusable, and the degraded body after a failed synthesis. So it is both a standalone mode and a safety net inside `engine/synth.js` (imported at line 9 as `offlineLessonBody` and `offlineOutline`).\n\nReading order: `offlineOutline()` at `engine/offline.js:74` groups files and chunks them into up to `maxLessons` lessons; `offlineLessonBody()` (line 131) and `offlineQuiz()` (line 156) fill them in; `offlineCourse()` (line 207) composes all three over `ing`, `ranked`, and `teaching`. Quality touches include `readmeBlurb()` (line 17), which skips headings, badges, code fences, and list markers to find a prose paragraph, and `projectDescription()` (line 35), which scans root-level files. A `BORING` set (lines 10–14) filters generic symbol names, and `languageMix()` (line 123) summarizes the repo's languages.\n\nEven in the model path, `shuffleChoices()` at `engine/synth.js:138` randomizes quiz option order, so offline and model quizzes behave alike downstream.\n\n**Watch out:** offline is not a failure — it is a deliberate mode *and* a fallback, so silently getting heuristic content with no API key configured is expected behavior, not a bug; conversely, a `BudgetError` from `engine/llm.js` (imported at `engine/synth.js:7`) is a hard stop that the degraded-path logic will not rescue.",
+      "quiz": [
+        {
+          "q": "What does `callValidated()` do when validation fails on both attempts?",
+          "choices": [
+            "It returns a degraded file list so the lesson can still be emitted.",
+            "It throws an `Error` containing the last validation error message.",
+            "It returns `{ error: true }` and lets the caller decide.",
+            "It calls `offlineLessonBody()` to produce a heuristic fallback."
+          ],
+          "answer": 1,
+          "why": "Line 24 of engine/synth.js shows `throw new Error(error)` after the two-attempt loop exhausts without a valid result."
+        },
+        {
+          "q": "Which two functions does `engine/synth.js` import from `engine/offline.js`?",
+          "choices": [
+            "`offlineCourse` and `offlineQuiz`",
+            "`offlineLessonBody` and `offlineCourse`",
+            "`offlineLessonBody` and `offlineOutline`",
+            "`offlineOutline` and `offlineQuiz`"
+          ],
+          "answer": 2,
+          "why": "Line 9 of engine/synth.js reads `import { offlineLessonBody, offlineOutline } from './offline.js'`."
+        }
+      ]
+    },
+    {
+      "id": "08-interactive-learning-tui",
+      "title": "Interactive learning TUI",
+      "order": 8,
       "files": [
         "cli/tui.js"
       ],
-      "body": "Understand what cli/ is responsible for.\n\n**`cli/tui.js`** — 355 lines (imported by ~1 file). Dependency-free terminal UI: lesson list -> lesson view -> quiz, with progress persisted to .curriculo/progress.json so a course can be resumed.\nKey definitions: `stripAnsi` (cli/tui.js:22), `wrap` (cli/tui.js:25), `styleLine` (cli/tui.js:47), `loadProgress` (cli/tui.js:59), `editorCommand` (cli/tui.js:65), `runTUI` (cli/tui.js:75).",
+      "body": "### What `cli/tui.js` does\n\nThis single file is the entire interactive experience. It takes the already-rendered `course` object (the same one the engine pipeline produced in earlier lessons) and turns it into a keyboard-driven session with four screens: **list**, **lesson**, **quiz**, and **done**. The screen dispatch is a one-liner at `cli/tui.js:198` where `draw()` looks up the current screen name in `st.screen` and calls the matching renderer.\n\n### How it connects to the rest of the course\n\nThe TUI is the last consumer of the course manifest. It imports only two things from the engine layer:\n\n- `progressPath` from `engine/manifest.js` (line 8) — gives the canonical path to `.curriculo/progress.json`.\n- `readJSON` / `writeJSON` from `engine/util.js` (line 9) — the same helpers the engine uses everywhere.\n\nThis means the TUI never re-parses source files or re-ranks anything; it works entirely from the in-memory `course` object passed in by `cli/index.js` and the on-disk progress file.\n\n### Reading order within the file\n\n1. **`runTUI({ course, root })`** at line 75 — the public entry point. It returns a `Promise` that resolves when the user quits, which is how `cli/index.js` can `await` the session and then continue (e.g., to print a summary).\n2. **`loadProgress`** at line 59 — reads `.curriculo/progress.json` and merges it with the lesson list so previously-completed lessons show a checkmark.\n3. **The four `draw*` functions** (lines 112, 140, 152, 178) — each returns an array of styled strings. `header()` at line 97 computes the \"3/7 done\" counter; `footer()` at line 105 prints the key hints.\n4. **`onKey`** at line 250 — the single keypress handler that routes arrows, `Enter`, `o` (open file), `q` (quit), etc. based on the current screen.\n5. **`enter()` / `leave()`** at lines 312 and 319 — toggle the terminal's alternate screen buffer (`\\x1b[?1049h` / `\\x1b[?1049l`) so the TUI doesn't pollute the user's scrollback.\n\n### Progress and file-opening\n\n`finishLesson()` at line 225 writes the updated progress back to disk via `writeJSON`, making the session resumable across terminal restarts. `openFile(rel)` at line 204 resolves the relative path against `root` and spawns the user's `$VISUAL` or `$EDITOR` (determined by `editorCommand()` at line 65), letting a learner jump straight to the source file a lesson references.\n\n### Non-interactive fallback\n\n`printCourse(course)` at line 343 is a simple `console.log` loop for when the user passes a `--no-tui` flag or the terminal isn't a TTY. It's the same data, just without the state machine.\n\n**Watch out:** The TUI uses `readline.emitKeypressEvents` (line 313) to get raw keypresses, but it never calls `readline.setRawMode(true)` explicitly in the visible excerpt — the raw-mode setup is likely handled inside `enter()` or by the readline interface itself. If you add a new key binding, test it in a real terminal; some editors (e.g., VS Code's integrated terminal) swallow `Ctrl+C` before it reaches the handler.",
       "quiz": [
         {
-          "q": "Which file defines `stripAnsi`?",
+          "q": "When the TUI re-renders, how does it decide which screen to display?",
           "choices": [
-            "engine/index.js",
-            "cli/tui.js",
-            "engine/ingest.js",
-            "engine/slice.js"
+            "It re-registers a `keypress` listener via `readline.emitKeypressEvents` before each draw",
+            "It calls `printCourse(course)` and prints the whole course again",
+            "It looks up `st.screen` in a table of renderer functions (`list`, `lesson`, `quiz`, `done`) and calls the matching one",
+            "It re-parses the source files with `engine/manifest.js` to rebuild the lesson list"
+          ],
+          "answer": 2,
+          "why": "cli/tui.js:199 builds `{ list: drawList, lesson: drawLesson, quiz: drawQuiz, done: drawDone }[st.screen]()` and calls it, so the current screen name alone selects the renderer."
+        },
+        {
+          "q": "Which pair of imports gives `cli/tui.js` everything it needs to persist a completed lesson across terminal restarts?",
+          "choices": [
+            "`spawn` from `node:child_process` and `editorCommand()` defined in `cli/index.js`",
+            "`progressPath` from `engine/manifest.js` and `writeJSON` from `engine/util.js`",
+            "`wrap()` from `engine/wrap.js` and `LETTERS` from `engine/quiz.js`",
+            "`readJSON` from `engine/manifest.js` and `progressPath` from `engine/util.js`"
           ],
           "answer": 1,
-          "why": "`stripAnsi` is declared in `cli/tui.js` at line 22."
+          "why": "cli/tui.js:8-9 imports only `progressPath` from `../engine/manifest.js` and `readJSON, writeJSON` from `../engine/util.js`, and `finishLesson()` (line 225) writes the progress back through those helpers."
         }
       ]
     }
@@ -135,11 +267,11 @@
   "stats": {
     "files": 19,
     "teachingSet": 13,
-    "durationMs": 132,
+    "durationMs": 119561,
     "tokens": {
-      "prompt": 0,
-      "completion": 0,
-      "calls": 0,
+      "prompt": 50870,
+      "completion": 15312,
+      "calls": 17,
       "cached": 0
     },
     "degradedLessons": 0

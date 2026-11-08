@@ -23,10 +23,10 @@ Curriculo produces that **path**: an ordered walk through the parts that matter,
 Runs straight from GitHub with no install step (Node.js 18+). To get a short `curriculo` command instead, run `npm i -g github:Darshit42/Curriculo`.
 
 ```bash
-# 1. Configure the BharatCode API (read from the environment only, never written to disk)
-export BHARATCODE_API_KEY=...
-export BHARATCODE_BASE_URL=https://<bharatcode-host>/v1
-export BHARATCODE_MODEL=<model-id>
+# 1. Set your BharatCode API key (read from the environment only, never written to disk)
+export BHARATCODE_API_KEY=bc_live_...   # from https://bharatcode.ai/account
+# optional: BHARATCODE_MODEL (default qwen-3.8-27b), BHARATCODE_BASE_URL (default https://bharatcode.ai/api/model/v1),
+#           BHARATCODE_REASONING_EFFORT (default low)
 
 # 2. Generate a course for a public repo (shallow-cloned to ~/.curriculo/repos) or a local path
 npx github:Darshit42/Curriculo gen pallets/click
@@ -75,14 +75,14 @@ Files (press the number to open in your editor):
 | `curriculo rank <url-or-path>` | Show which files would be taught, and why |
 | `curriculo badge` | Print the README badge that links to `LEARN.md` |
 
-`gen` options: `--offline`, `--lessons <n>` (8), `--top <n>` teaching-set size (24), `--budget <tokens>` hard cap (250k), `--concurrency <n>` (4), `--out <dir>`, `--no-cache`, `--learn`.
+`gen` options: `--offline`, `--lessons <n>` (8), `--top <n>` teaching-set size (24), `--budget <tokens>` hard cap (250k), `--concurrency <n>` (8), `--out <dir>`, `--no-cache`, `--learn`.
 
 ## How it works
 
 ```
 clone / read repo → build file tree → rank & select
                                           │
-             ┌──────────── BharatCode API ▼ ────────────┐
+             ┌──────────── BharatCode API ▼ ─────────────┐
              │ repo summary → lesson synthesis → quizzes │   (lessons run in parallel)
              └──────────────────────┬────────────────────┘
                                     ▼

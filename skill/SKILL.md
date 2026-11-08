@@ -62,7 +62,7 @@ current working directory). `SKILL_DIR` below is the directory containing this f
 
 ## Alternative: BharatCode backend
 
-If `BHARATCODE_API_KEY`, `BHARATCODE_BASE_URL` and `BHARATCODE_MODEL` are set,
+If `BHARATCODE_API_KEY` is set (model and base URL have defaults),
 the engine can generate the whole course itself:
 
 ```bash

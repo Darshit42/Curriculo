@@ -46,9 +46,10 @@ ${bold('gen options')}
   --learn              Open the course right after generating it
 
 ${bold('Environment')}
-  BHARATCODE_API_KEY   API key (read from env only; never written to disk)
-  BHARATCODE_BASE_URL  API base URL, e.g. https://<host>/v1
-  BHARATCODE_MODEL     Model id
+  BHARATCODE_API_KEY   API key from https://bharatcode.ai/account (env only; never written to disk)
+  BHARATCODE_MODEL     Model id (default qwen-3.8-27b; deepseek-v4.1-flash on Pro)
+  BHARATCODE_BASE_URL  API base URL (default https://bharatcode.ai/api/model/v1)
+  BHARATCODE_REASONING_EFFORT  none, low, medium or high (default low)
 
 ${bold('Examples')}
   npx github:Darshit42/Curriculo gen expressjs/express --learn
